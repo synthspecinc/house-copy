@@ -1,0 +1,9 @@
+{
+  "issuer": "https://identity.example.test/realms/organization",
+  "clientId": "house-copy",
+  "mfaAcrValues": [],
+  "users": [
+    {"subject": "EXAMPLE_EDITOR_SUBJECT", "label": "Content editor", "role": "editor"},
+    {"subject": "EXAMPLE_PUBLISHER_SUBJECT", "label": "Publisher", "role": "publisher"}
+  ]
+}

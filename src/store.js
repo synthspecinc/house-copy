@@ -14,7 +14,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, name TEXT NOT NULL, document TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS fake_templates (name TEXT PRIMARY KEY, document TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS locks (name TEXT PRIMARY KEY, owner TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS locks (name TEXT PRIMARY KEY, owner TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created TEXT NOT NULL, document TEXT NOT NULL);`);
   }
   bindScope(mode,region,account) {
     const scope=JSON.stringify({mode,region:mode==='aws'?region:null,account:mode==='aws'?account:null});
@@ -27,8 +28,13 @@ export class Store {
   deleteDraft(name) { this.db.prepare('DELETE FROM drafts WHERE name=?').run(name); }
   revisions(name) { return this.db.prepare('SELECT document FROM revisions WHERE name=? ORDER BY created DESC, rowid DESC').all(name).map(r => JSON.parse(r.document)); }
   revision(name,id) { return this.revisions(name).find(r => r.id === id); }
-  snapshot(name, template, reason) {
-    const revision = {id:randomUUID(),created:new Date().toISOString(),template,reason};
+  audit(action,{actor,requestId,template,revision,outcome,target}={}) {
+    const event={created:new Date().toISOString(),action,outcome,requestId,template,revision,target,
+      ...(actor?{actor:{issuer:actor.issuer,subject:actor.subject,role:actor.role}}:{})};
+    this.db.prepare('INSERT INTO audit_events (created,document) VALUES (?,?)').run(event.created,JSON.stringify(event));
+  }
+  snapshot(name, template, reason,context={}) {
+    const revision = {id:randomUUID(),created:new Date().toISOString(),template,reason,actor:context.actor,requestId:context.requestId};
     this.db.prepare('INSERT INTO revisions VALUES (?,?,?,?)').run(revision.id,name,revision.created,JSON.stringify(revision));
     return revision;
   }

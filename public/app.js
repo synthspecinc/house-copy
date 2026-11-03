@@ -1,24 +1,40 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let state, fields={}, sample={}, dirty=false, previewed=false, view='edit', busy=false;
+let state, fields={}, sample={}, dirty=false, previewed=false, view='edit', busy=false, identity,csrfToken;
 async function api(path,method='GET',body) {
-  const response=await fetch(`/api/templates${path}`,{method,headers:{'Content-Type':'application/json','X-House-Copy':'1'},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  const response=await fetch(`/api/templates${path}`,{method,headers:{'Content-Type':'application/json','X-House-Copy':'1',...(csrfToken?{'X-CSRF-Token':csrfToken}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   const data=await response.json();
+  if(response.status===401) sessionEnded();
   if(!response.ok) throw new Error(data.error || 'The request failed.');
   return data;
 }
 function status(message,error=false) { $('status').textContent=message; $('status').classList.toggle('error',error); }
+function sessionEnded() {
+  identity=undefined;csrfToken=undefined;
+  $('account-name').textContent='';$('environment').textContent='Sign-in required';
+  $('session-message').textContent=state?'Your session ended. Your unsaved content stays here. Sign in in a new tab, then return and choose Resume after sign-in.':'Sign in with your organization account to open House Copy.';
+  $('session-notice').hidden=false;$('logout').hidden=true;syncButtons();
+}
+async function refreshSession() {
+  const response=await fetch('/auth/session');
+  if(!response.ok) {sessionEnded();return false;}
+  const data=await response.json();identity=data.user;csrfToken=data.csrfToken;
+  $('environment').textContent=data.mode==='demo'?'Local demo · Fake SES':'Signed in';
+  $('account-name').textContent=`${identity.label} · ${identity.role}`;
+  $('logout').hidden=data.mode==='demo';$('session-notice').hidden=true;syncButtons();return true;
+}
 function changes() { dirty=true; previewed=false; $('draft-state').textContent='Unsaved changes'; syncButtons(); }
 function syncButtons() {
-  const blocked=busy || !state?.editable || state.stale;
+  const blocked=busy || !identity || !state?.editable || state.stale;
   $('save').disabled=blocked || !dirty;
-  $('publish').disabled=blocked || dirty || !state?.hasDraft || !previewed;
+  $('publish').disabled=blocked || identity?.role!=='publisher' || dirty || !state?.hasDraft || !previewed;
   $('discard').disabled=busy || !state?.hasDraft;
+  for(const button of $('revisions').querySelectorAll('button')) button.disabled=busy || !identity || identity.role!=='publisher' || state?.recoveryRequired;
   for(const input of $('fields').querySelectorAll('input,textarea')) input.disabled=!!blocked;
   if(view==='edit') for(const field of state?.fields || []) for(const selector of field.selectors) {
     const node=$('email').contentDocument?.querySelector(selector); if(node) node.contentEditable=String(!blocked);
   }
-  $('publish-help').textContent=dirty?'Save your draft, then review a sample preview.':previewed?'Your sample preview is ready. Publishing updates the existing SES template.':'Review a sample preview before publishing.';
+  $('publish-help').textContent=identity?.role==='editor'?'You can edit and save drafts. A publisher must publish or restore them.':dirty?'Save your draft, then review a sample preview.':previewed?'Your sample preview is ready. Publishing updates the existing SES template.':'Review a sample preview before publishing.';
 }
 async function work(action) {
   if(busy) return;
@@ -60,8 +76,8 @@ async function load(name) {
   if(!data.revisions.length) { const p=document.createElement('p'); p.className='quiet'; p.textContent='A prior revision appears here after your first publish.'; $('revisions').append(p); }
   for(const revision of data.revisions) {
     const item=document.createElement('div'); item.className='revision';
-    const text=document.createElement('p'); text.textContent=`${revision.reason} · ${new Date(revision.created).toLocaleString()}`;
-    const button=document.createElement('button'); button.textContent='Restore this revision'; button.className='text-button'; button.disabled=data.recoveryRequired;
+    const text=document.createElement('p'); text.textContent=`${revision.reason} · ${new Date(revision.created).toLocaleString()} · ${revision.actor?.subject || 'Unknown actor'}`;
+    const button=document.createElement('button'); button.textContent='Restore this revision'; button.className='text-button'; button.disabled=data.recoveryRequired || identity?.role!=='publisher';
     button.onclick=()=>work(async()=>{
       if(dirty || state.hasDraft) throw new Error('Discard or publish the current draft before restoring a revision.');
       if(await confirmAction('Restore this revision?','This replaces the current SES template with the saved HTML, plain text and subject. House Copy saves the current version first.','Restore revision')) {
@@ -87,7 +103,7 @@ function showEdit() {
   switchView('edit'); $('subject-preview').textContent=fields.subject ?? state.template.subject;
   $('email').title='Email visual editor';
   $('email').onload=()=>{
-    if(view!=='edit') return;
+    if(view!=='edit' || !state) return;
     const doc=$('email').contentDocument;
     doc.addEventListener('click',event=>{ if(event.target.closest('a')) event.preventDefault(); });
     doc.addEventListener('submit',event=>event.preventDefault());
@@ -144,8 +160,9 @@ $('back').onclick=()=>work(async()=>{
   state=null; dirty=false; $('editor').hidden=true; $('library').hidden=false; status('');
 });
 window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
-work(async()=>{
-  const data=await api(''); $('environment').textContent=data.mode==='fake'?'Local demo · Fake SES':'Connected to Amazon SES';
+async function loadLibrary() {
+  $('templates').replaceChildren();
+  const data=await api(''); $('library').hidden=false; $('environment').textContent=data.mode==='fake'?(csrfToken?'Fake SES · Signed in':'Local demo · Fake SES'):'Connected to Amazon SES';
   for(const t of data.templates) {
     const button=document.createElement('button'); button.className='template-card';
     const icon=document.createElement('span'); icon.className='card-icon'; icon.textContent=t.editable?'✉':'▤';
@@ -155,4 +172,12 @@ work(async()=>{
     const action=document.createElement('span'); action.className='card-action'; action.textContent=t.editable?'Open template →':'View protected template →';
     button.append(icon,title,description,name,action); button.onclick=()=>work(()=>load(t.name)); $('templates').append(button);
   }
+}
+$('resume').onclick=()=>work(async()=>{if(await refreshSession()){if(!state) await loadLibrary();status('Signed in. You can continue with the content in this window.');}});
+$('logout').onclick=()=>work(async()=>{
+  if(dirty && !await confirmAction('Sign out with unsaved changes?','Unsaved edits in this window will be lost. Saved drafts remain available to your team.','Sign out')) return;
+  const response=await fetch('/auth/logout',{method:'POST',headers:{'Content-Type':'application/json','X-House-Copy':'1','X-CSRF-Token':csrfToken},body:'{}'});
+  if(!response.ok) throw new Error('Sign-out could not be confirmed. Try again.');
+  dirty=false;state=undefined;fields={};sample={};$('editor').hidden=true;$('library').hidden=true;$('templates').replaceChildren();$('email').onload=null;$('email').srcdoc='';$('fields').replaceChildren();$('sample').replaceChildren();$('revisions').replaceChildren();$('plain').textContent='';$('subject-preview').textContent='';$('account-name').textContent='';sessionEnded();status('Signed out of House Copy.');
 });
+work(async()=>{if(await refreshSession()) await loadLibrary();});

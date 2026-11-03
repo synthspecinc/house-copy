@@ -8,7 +8,9 @@
 | HOUSE_COPY_CONFIG | ./config/templates.json | Operator-owned mappings and synthetic default samples. |
 | HOUSE_COPY_DB | ./data/house-copy.sqlite | Persistent SQLite database. |
 | HOUSE_COPY_ORIGIN | http://localhost:3210 | Exact origin, without trailing slash, for write request checks. AWS requires HTTPS. |
-| HOUSE_COPY_PASSWORD_FILE | unset | File containing the password for username `editor`. Required in AWS mode, at least 24 characters. |
+| HOUSE_COPY_AUTH | unset | Required. `oidc`, or explicit `demo` with fake SES and a loopback public origin. |
+| HOUSE_COPY_AUTH_CONFIG | unset | Private OIDC issuer/client/user policy JSON. Required for OIDC. |
+| HOUSE_COPY_OIDC_SECRET_FILE | unset | Mounted OIDC client secret. Required for OIDC. |
 | AWS_REGION | unset | Required in AWS mode. No implicit region. |
 | HOUSE_COPY_AWS_ACCOUNT_ID | unset | Expected 12-digit account ID. Checked with STS before serving in AWS mode. |
 | HOST | 127.0.0.1 | Bind address. The container sets 0.0.0.0 and Compose publishes only localhost. |
@@ -19,9 +21,13 @@ AWS credentials use the SDK default provider chain. Prefer the dedicated ECS run
 
 Drafts are shared within the instance. Version checks reject another window's stale saves. Publishing rechecks SES, saves the complete prior template durably, updates the same name, and reads it back. Restore saves the current version first, then writes the selected prior revision exactly. An external writer can race with SES updates because SES has no conditional write. Run one House Copy process and coordinate all other template writers.
 
+See [authentication](authentication.md) for user access, logout, blocking, revocation and audit export. Shared Basic authentication has been removed. The old HOUSE_COPY_PASSWORD_FILE setting fails startup. OIDC discovery uses a five-second request timeout and verifies TLS and token signatures.
+
 ## Backup and retention
 
 The volume contains private drafts, complete revision preimages and pending write evidence. Stop this service alone before copying the database and its SQLite sidecars together. Use an encrypted operator backup location with access restrictions. Start the same service afterward. Verify a restore into a separate disposable volume before relying on backups. Do not remove the original volume. Docker Compose `down` without `--volumes` preserves it.
+
+Restoring a database also restores its session and block state. Before starting the restored service, keep the current private auth policy, reapply current disable/block decisions and revoke sessions for every allowlisted subject with the authentication access command. This prevents a recent backup from reviving a revoked session.
 
 House Copy keeps all revisions. There is no automatic retention pruning or destructive cleanup. Operators own volume capacity and retention policy. The health endpoint proves the HTTP process responds; live SES availability is checked when opening or writing a template.
 
