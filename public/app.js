@@ -29,7 +29,8 @@ function syncButtons() {
   $('save').disabled=blocked || !dirty;
   $('publish').disabled=blocked || identity?.role!=='publisher' || dirty || !state?.hasDraft || !previewed;
   $('discard').disabled=busy || !state?.hasDraft;
-  for(const button of $('revisions').querySelectorAll('button')) button.disabled=busy || !identity || identity.role!=='publisher' || state?.recoveryRequired;
+  $('review-draft').disabled=busy || !state?.hasDraft;
+  for(const button of $('revisions').querySelectorAll('button[data-restore]')) button.disabled=busy || !identity || identity.role!=='publisher' || state?.recoveryRequired;
   for(const input of $('fields').querySelectorAll('input,textarea')) input.disabled=!!blocked;
   if(view==='edit') for(const field of state?.fields || []) for(const selector of field.selectors) {
     const node=$('email').contentDocument?.querySelector(selector); if(node) node.contentEditable=String(!blocked);
@@ -46,6 +47,7 @@ async function load(name) {
   const data=await api(`/${encodeURIComponent(name)}`);
   state=data; dirty=false; previewed=false; sample=structuredClone(data.sample); fields=Object.fromEntries(data.fields.map(f=>[f.id,f.value]));
   $('library').hidden=true; $('editor').hidden=false;
+  $('scope-label').textContent=`${data.scope.environment} · ${data.scope.mode} · ${data.scope.account || 'Local account'} · ${data.scope.region || 'Local region'}`;
   $('template-name').textContent=data.name; $('template-label').textContent=data.label;
   $('draft-state').textContent=data.hasDraft?'Saved draft':'Published';
   const message=data.recoveryRequired?'A previous publish needs an operator check. Further writes are blocked.':data.mappingError || (data.stale?'SES has a newer version. Discard this draft to load it.':!data.editable?'This template is protected. Ask an operator to map its editable content.':'');
@@ -77,14 +79,21 @@ async function load(name) {
   for(const revision of data.revisions) {
     const item=document.createElement('div'); item.className='revision';
     const text=document.createElement('p'); text.textContent=`${revision.reason} · ${new Date(revision.created).toLocaleString()} · ${revision.actor?.subject || 'Unknown actor'}`;
-    const button=document.createElement('button'); button.textContent='Restore this revision'; button.className='text-button'; button.disabled=data.recoveryRequired || identity?.role!=='publisher';
+    const button=document.createElement('button'); button.textContent='Restore this revision';button.dataset.restore='true'; button.className='text-button'; button.disabled=data.recoveryRequired || identity?.role!=='publisher';
     button.onclick=()=>work(async()=>{
       if(dirty || state.hasDraft) throw new Error('Discard or publish the current draft before restoring a revision.');
       if(await confirmAction('Restore this revision?','This replaces the current SES template with the saved HTML, plain text and subject. House Copy saves the current version first.','Restore revision')) {
-        await api(`/${state.name}/revisions/${revision.id}/restore`,'POST',{currentHash:state.currentHash,confirmName:state.name}); await load(state.name); status('Prior revision restored.');
+        await api(`/${state.name}/revisions/${revision.id}/restore`,'POST',{currentHash:state.currentHash,confirmName:state.name,...changeContext()}); await load(state.name); status('Prior revision restored.');
       }
     });
     item.append(text,button); $('revisions').append(item);
+  }
+  for(const publication of data.publications || []) {
+    const item=document.createElement('div');item.className='revision';
+    const text=document.createElement('p');text.textContent=`${publication.action} · ${publication.status} · ${publication.actor?.subject || 'Unknown actor'} · ${new Date(publication.created).toLocaleString()}`;
+    const button=document.createElement('button');button.className='text-button';button.textContent='View publication';
+    button.onclick=()=>work(async()=>showComparison(await api(`/${state.name}/publications/${publication.id}`),'Publication evidence'));
+    item.append(text,button);$('revisions').append(item);
   }
   showEdit(); syncButtons();
 }
@@ -153,7 +162,7 @@ $('edit-view').onclick=showEdit;
 $('preview').onclick=()=>work(()=>makePreview('preview'));
 $('text-view').onclick=()=>work(()=>makePreview('text'));
 $('publish').onclick=()=>work(async()=>{
-  if(await confirmAction('Publish these changes?','Your application will use this copy the next time it sends this template. You can restore the prior revision from history.','Publish changes')) { await api(`/${state.name}/publish`,'POST',{version:state.version,confirmName:state.name,sample}); await load(state.name); status('Changes published. The prior revision is in history.'); }
+  if(await confirmAction('Publish these changes?','Your application will use this copy the next time it sends this template. You can restore the prior revision from history.','Publish changes')) { await api(`/${state.name}/publish`,'POST',{version:state.version,confirmName:state.name,sample,...changeContext()}); await load(state.name); status('Changes published. The prior revision is in history.'); }
 });
 $('back').onclick=()=>work(async()=>{
   if(dirty && !await confirmAction('Leave unsaved changes?','Your saved draft will remain. Unsaved edits will be lost.','Leave editor')) return;
@@ -181,3 +190,27 @@ $('logout').onclick=()=>work(async()=>{
   dirty=false;state=undefined;fields={};sample={};$('editor').hidden=true;$('library').hidden=true;$('templates').replaceChildren();$('email').onload=null;$('email').srcdoc='';$('fields').replaceChildren();$('sample').replaceChildren();$('revisions').replaceChildren();$('plain').textContent='';$('subject-preview').textContent='';$('account-name').textContent='';sessionEnded();status('Signed out of House Copy.');
 });
 work(async()=>{if(await refreshSession()) await loadLibrary();});
+
+function changeContext() {return {reason:$('change-reason').value,reference:$('change-reference').value};}
+function highlighted(before,after,which) {
+  if(before===null || after===null) return document.createTextNode((which==='before'?before:after)??'(Part absent)');
+  let start=0,end=0;
+  while(start<before.length && start<after.length && before[start]===after[start]) start++;
+  while(end<before.length-start && end<after.length-start && before[before.length-1-end]===after[after.length-1-end]) end++;
+  const value=which==='before'?before:after,fragment=document.createDocumentFragment(),mark=document.createElement('mark');
+  mark.className=which;mark.textContent=value.slice(start,value.length-end);fragment.append(document.createTextNode(value.slice(0,start)),mark,document.createTextNode(end?value.slice(-end):''));return fragment;
+}
+function showComparison(data,title='Change review') {
+  $('comparison-title').textContent=title;
+  $('comparison-context').textContent=`${data.scope.environment} · ${data.scope.account || 'Local account'} · ${data.name} · ${data.changeReason || 'Saved draft'}${data.reference?' · '+data.reference:''}`;
+  $('comparison-parts').replaceChildren();
+  for(const part of data.parts) {
+    const section=document.createElement('details');section.open=part.changed;
+    const heading=document.createElement('summary');heading.textContent=`${part.part}${part.changed?' · changed':' · unchanged'}`;section.append(heading);
+    const columns=document.createElement('div');columns.className='comparison-columns';
+    for(const which of ['before','after']) {const column=document.createElement('div'),label=document.createElement('h3'),pre=document.createElement('pre');label.textContent=which==='before'?'Before':'After';pre.append(highlighted(part.before,part.after,which));column.append(label,pre);columns.append(column);}
+    section.append(columns);$('comparison-parts').append(section);
+  }
+  $('comparison').showModal();
+}
+$('review-draft').onclick=()=>work(async()=>showComparison(await api(`/${state.name}/review`),'Review saved changes'));

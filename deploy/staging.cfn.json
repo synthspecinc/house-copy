@@ -298,6 +298,10 @@
               {
                 "Name": "HOUSE_COPY_OIDC_SECRET_FILE",
                 "Value": "/run/house-copy/oidc-client-secret"
+              },
+              {
+                "Name": "HOUSE_COPY_ENVIRONMENT",
+                "Value": "staging"
               }
             ],
             "LogConfiguration": {

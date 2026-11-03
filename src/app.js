@@ -74,6 +74,8 @@ export function createApp(service,{origin='http://localhost:3210',auth,mode='fak
     const result=await service.open(req.params.name);
     res.json({...result,editorHtml:previewDocument(result.template.html)});
   });
+  app.get('/api/templates/:name/review',async(req,res)=>res.json(await service.reviewDraft(req.params.name)));
+  app.get('/api/templates/:name/publications/:id',(req,res)=>res.json(service.publication(req.params.name,req.params.id)));
   app.put('/api/templates/:name/draft',permit('editor'),change('draft.save',(req)=>service.save(req.params.name,req.body)));
   app.post('/api/templates/:name/discard',permit('editor'),change('draft.discard',(req)=>service.discard(req.params.name,req.body.version)));
   app.post('/api/templates/:name/preview',permit('editor'),async(req,res)=>res.json(await service.preview(req.params.name,req.body)));

@@ -1,6 +1,7 @@
 import { SESv2Client, GetEmailTemplateCommand, UpdateEmailTemplateCommand } from '@aws-sdk/client-sesv2';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import { Problem } from './editor.js';
+import { randomUUID } from 'node:crypto';
 
 export class FakeSes {
   constructor(store, fixtures) {
@@ -15,6 +16,7 @@ export class FakeSes {
   }
   async update(template) {
     if (!this.store.db.prepare('UPDATE fake_templates SET document=? WHERE name=?').run(JSON.stringify(template),template.name).changes) throw new Problem(404,'Template not found.');
+    return {requestId:`fake-${randomUUID()}`};
   }
 }
 export class AwsSes {
@@ -25,7 +27,8 @@ export class AwsSes {
     return {name,subject:t.Subject,...(t.Html === undefined ? {} : {html:t.Html}),...(t.Text === undefined ? {} : {text:t.Text})};
   }
   async update(t) {
-    await this.client.send(new UpdateEmailTemplateCommand({TemplateName:t.name,TemplateContent:{Subject:t.subject,...(t.html === undefined ? {} : {Html:t.html}),...(t.text === undefined ? {} : {Text:t.text})}}));
+    const result=await this.client.send(new UpdateEmailTemplateCommand({TemplateName:t.name,TemplateContent:{Subject:t.subject,...(t.html === undefined ? {} : {Html:t.html}),...(t.text === undefined ? {} : {Text:t.text})}}));
+    return {requestId:result.$metadata?.requestId || null};
   }
 }
 export async function verifyAccount(region, expected, client = new STSClient({region})) {

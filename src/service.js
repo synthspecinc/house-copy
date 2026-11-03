@@ -1,9 +1,10 @@
 import { Problem, applyFields, mappedFields, fingerprint, render, previewDocument } from './editor.js';
 import { randomUUID } from 'node:crypto';
+import { changeMetadata,comparison,publicationRecord,publicationSummary } from './publications.js';
 
 export class TemplateService {
-  constructor(store, adapter, config) {
-    this.store=store; this.adapter=adapter; this.config=config;
+  constructor(store, adapter, config,{environment}={}) {
+    this.store=store; this.adapter=adapter; this.config=config;this.scope=store.scope(environment);
     if (!Array.isArray(config.templates) || new Set(config.templates.map(t=>t.name)).size !== config.templates.length) throw new Error('Template names must be unique.');
     for (const t of config.templates) if (!/^[\w-]{1,64}$/.test(t.name) || !Array.isArray(t.fields)) throw new Error('Invalid template configuration.');
   }
@@ -21,7 +22,17 @@ export class TemplateService {
       version:draft?.version || null,baseHash:draft?.baseHash || fingerprint(current),currentHash:fingerprint(current),
       mappingHash:fingerprint(mapping),hasDraft:!!draft,stale:!!draft && draft.baseHash!==fingerprint(current),mappingError,
       recoveryRequired:pending,editable:fields.length>0 && !mappingError && !pending,
-      revisions:this.store.revisions(name).map(({template,...r})=>r)};
+      scope:this.scope,publications:this.store.publications(name).map(publicationSummary),revisions:this.store.revisions(name).map(({template,...r})=>r)};
+  }
+  async reviewDraft(name) {
+    const mapping=this.mapping(name),current=await this.adapter.get(name),draft=this.store.draft(name);
+    if(!draft) throw new Problem(409,'Save a draft before reviewing it.');
+    return {name,scope:this.scope,version:draft.version,baseHash:draft.baseHash,currentHash:fingerprint(current),mappingHash:fingerprint(mapping),parts:comparison(current,draft.template)};
+  }
+  publication(name,id) {
+    this.mapping(name);const record=this.store.publication(name,id);
+    if(!record) throw new Problem(404,'Publication not found.');
+    return {...record,parts:comparison(record.before,record.after)};
   }
   async save(name, body) {
     this.mapping(name);
@@ -63,7 +74,7 @@ export class TemplateService {
       if (body.confirmName!==name) throw new Problem(422,'Confirm the template name before publishing.');
       // Validate all parts and sample data before any remote write.
       render(draft.template,body.sample);
-      await this.write(name,draft.template,draft.baseHash,'Before publish',context);
+      await this.write(name,draft.template,draft.baseHash,'Before publish',{...context,...changeMetadata(body,this.scope),mappingHash:draft.mappingHash});
       this.store.deleteDraft(name);
       return this.open(name);
     });
@@ -76,7 +87,7 @@ export class TemplateService {
       const revision=this.store.revision(name,id);
       if (!revision) throw new Problem(404,'Revision not found.');
       // Restore is exact, including historical HTML, text, expressions and attributes.
-      await this.write(name,revision.template,body.currentHash,'Before restore',context);
+      await this.write(name,revision.template,body.currentHash,'Before restore',{...context,...changeMetadata(body,this.scope),mappingHash:fingerprint(this.mapping(name))});
       return this.open(name);
     });
   }
@@ -84,18 +95,29 @@ export class TemplateService {
     if (this.store.pending(name).length) throw new Problem(409,'An earlier update needs operator recovery. No further writes are allowed.');
     const previous=await this.adapter.get(name);
     if (fingerprint(previous)!==expected) throw new Problem(409,'SES changed since you opened this template. Reopen it before writing.');
-    const revision=this.store.snapshot(name,previous,reason,context);
     const action=reason==='Before publish'?'template.publish':'template.restore';
-    const auditContext={...context,template:name,revision:revision.id};
-    const operation=this.store.operation(name,{previous,next,created:new Date().toISOString(),actor:context.actor,requestId:context.requestId,revision:revision.id});
-    this.store.audit(action,{...auditContext,outcome:'started'});
+    let publication,operation,auditContext;
+    this.store.transaction(()=>{
+      const revision=this.store.snapshot(name,previous,reason,context);
+      publication=this.store.publicationIntent(name,publicationRecord(name,previous,next,reason,context,this.scope,revision.id));
+      auditContext={...context,template:name,revision:revision.id,publicationId:publication.id,beforeHash:publication.beforeHash,afterHash:publication.afterHash};
+      operation=this.store.operation(name,{previous,next,created:new Date().toISOString(),actor:context.actor,requestId:context.requestId,revision:revision.id,publicationId:publication.id});
+      this.store.audit(action,{...auditContext,outcome:'started'});
+    });
+    let providerRequestId=null;
     try {
-      await this.adapter.update(next);
-      if (fingerprint(await this.adapter.get(name))!==fingerprint(next)) throw new Error('Read-back mismatch');
-      this.store.audit(action,{...auditContext,outcome:'success'});
-      this.store.finish(operation);
+      providerRequestId=(await this.adapter.update(next))?.requestId || null;
+      if(fingerprint(await this.adapter.get(name))!==publication.afterHash) throw new Error('Read-back mismatch');
+      this.store.transaction(()=>{
+        this.store.publicationResult(publication.id,{outcome:'success',confirmedHash:publication.afterHash,providerRequestId});
+        this.store.audit(action,{...auditContext,providerRequestId,outcome:'success'});
+        this.store.finish(operation);
+      });
     } catch {
-      this.store.audit(action,{...auditContext,outcome:'uncertain'});
+      this.store.transaction(()=>{
+        this.store.publicationResult(publication.id,{outcome:'uncertain',providerRequestId});
+        this.store.audit(action,{...auditContext,providerRequestId,outcome:'uncertain'});
+      });
       throw new Problem(502,'The update could not be confirmed. Your prior revision is safe. Publishing is blocked until an operator checks SES and recovers the pending operation.');
     }
   }

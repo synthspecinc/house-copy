@@ -11,6 +11,10 @@ test('non-developer workflow edits visually, previews both parts, publishes and 
   await page.getByLabel('Button label',{exact:true}).fill('Explore your workspace');
   await page.getByRole('button',{name:'Save draft',exact:true}).click();
   await expect(page.getByRole('status')).toHaveText('Draft saved. SES has not changed.');
+  await page.getByRole('button',{name:'Review saved changes',exact:true}).click();
+  await expect(page.locator('#comparison')).toContainText('A fresh start, together');
+  await expect(page.locator('#comparison')).toContainText('A good place to start');
+  await page.getByRole('button',{name:'Close review',exact:true}).click();
   await page.reload(); await page.getByRole('button',{name:/Workspace welcome/}).click();
   await expect(page.getByLabel('Headline',{exact:true})).toHaveValue('A fresh start, together');
   await page.getByRole('button',{name:'Preview with sample',exact:true}).click();
@@ -24,6 +28,9 @@ test('non-developer workflow edits visually, previews both parts, publishes and 
   await page.getByRole('dialog').getByRole('button',{name:'Publish changes',exact:true}).click();
   await expect(page.getByRole('status')).toHaveText('Changes published. The prior revision is in history.');
   await page.getByText('Revision history',{exact:true}).click();
+  await page.getByRole('button',{name:'View publication',exact:true}).click();
+  await expect(page.locator('#comparison')).toContainText('A fresh start, together');
+  await page.getByRole('button',{name:'Close review',exact:true}).click();
   await page.getByRole('button',{name:'Restore this revision',exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:'Restore revision',exact:true}).click();
   await expect(page.getByRole('status')).toHaveText('Prior revision restored.');

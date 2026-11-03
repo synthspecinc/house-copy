@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Problem } from './editor.js';
+import { migrate } from './schema.js';
 
 export class Store {
   constructor(path) {
@@ -16,6 +17,37 @@ export class Store {
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS locks (name TEXT PRIMARY KEY, owner TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, created TEXT NOT NULL, document TEXT NOT NULL);`);
+    try {migrate(this.db);} catch(error) {this.db.close();throw error;}
+  }
+  transaction(action) {
+    if(this.db.isTransaction) return action();
+    this.db.exec('BEGIN IMMEDIATE');
+    try {const result=action();if(result?.then) throw new Error('Database transactions must be synchronous.');this.db.exec('COMMIT');return result;}
+    catch(error) {this.db.exec('ROLLBACK');throw error;}
+  }
+  scope(environment) {
+    const row=this.db.prepare("SELECT value FROM settings WHERE key='scope'").get();
+    const scope=row?JSON.parse(row.value):{mode:'fake',region:null,account:null};
+    return {...scope,environment:environment || (scope.mode==='fake'?'demo':'aws')};
+  }
+  publicationIntent(name,record) {
+    const document={id:randomUUID(),created:new Date().toISOString(),...record};
+    this.db.prepare('INSERT INTO publications VALUES (?,?,?,?)').run(document.id,name,document.created,JSON.stringify(document));
+    return document;
+  }
+  publicationResult(id,result) {
+    if(!this.db.prepare('SELECT 1 FROM publications WHERE id=?').get(id)) throw new Error('Publication not found.');
+    const document={id:randomUUID(),created:new Date().toISOString(),...result};
+    this.db.prepare('INSERT INTO publication_results VALUES (?,?,?,?)').run(document.id,id,document.created,JSON.stringify(document));
+    return document;
+  }
+  publications(name) {
+    return this.db.prepare('SELECT document FROM publications WHERE name=? ORDER BY created DESC,rowid DESC').all(name).map(row=>this.publication(name,JSON.parse(row.document).id));
+  }
+  publication(name,id) {
+    const row=this.db.prepare('SELECT document FROM publications WHERE name=? AND id=?').get(name,id);
+    if(!row) return undefined;
+    return {...JSON.parse(row.document),results:this.db.prepare('SELECT document FROM publication_results WHERE publication_id=? ORDER BY created,rowid').all(id).map(r=>JSON.parse(r.document))};
   }
   bindScope(mode,region,account) {
     const scope=JSON.stringify({mode,region:mode==='aws'?region:null,account:mode==='aws'?account:null});
@@ -28,8 +60,8 @@ export class Store {
   deleteDraft(name) { this.db.prepare('DELETE FROM drafts WHERE name=?').run(name); }
   revisions(name) { return this.db.prepare('SELECT document FROM revisions WHERE name=? ORDER BY created DESC, rowid DESC').all(name).map(r => JSON.parse(r.document)); }
   revision(name,id) { return this.revisions(name).find(r => r.id === id); }
-  audit(action,{actor,requestId,template,revision,outcome,target}={}) {
-    const event={created:new Date().toISOString(),action,outcome,requestId,template,revision,target,
+  audit(action,{actor,requestId,template,revision,outcome,target,publicationId,beforeHash,afterHash,providerRequestId,reviewId}={}) {
+    const event={created:new Date().toISOString(),action,outcome,requestId,template,revision,target,publicationId,beforeHash,afterHash,providerRequestId,reviewId,
       ...(actor?{actor:{issuer:actor.issuer,subject:actor.subject,role:actor.role}}:{})};
     this.db.prepare('INSERT INTO audit_events (created,document) VALUES (?,?)').run(event.created,JSON.stringify(event));
   }
