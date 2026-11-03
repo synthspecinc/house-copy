@@ -65,6 +65,10 @@ export class OidcAuth {
     this.store.db.prepare('DELETE FROM auth_sessions WHERE expires<=?').run(time);
     this.store.db.prepare('DELETE FROM auth_logins WHERE expires<=?').run(time);
   }
+  publisherEnabled(actor) {
+    const policy=this.policy();
+    return actor.issuer===policy.issuer && policy.users.some(u=>u.subject===actor.subject && u.role==='publisher' && !u.disabled) && !this.store.db.prepare('SELECT 1 FROM auth_blocked WHERE issuer=? AND subject=?').get(actor.issuer,actor.subject);
+  }
   allowed(subject,evidence={}) {
     const p=this.policy(),user=p.users.find(u=>u.subject===subject);
     const blocked=this.store.db.prepare('SELECT 1 FROM auth_blocked WHERE issuer=? AND subject=?').get(p.issuer,subject);

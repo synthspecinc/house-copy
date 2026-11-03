@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { rateLimit } from 'express-rate-limit';
 import { Problem, previewDocument } from './editor.js';
+import { fingerprint } from './editor.js';
 import { demoActor } from './auth.js';
 
 export function createApp(service,{origin='http://localhost:3210',auth,mode='fake',limits={}}={}) {
   if(!auth && mode!=='fake') throw new Error('Real SES requires individual OIDC authentication.');
   const app=express(),store=service.store;
+  if(auth) service.authority={version:()=>fingerprint(auth.policy()),isPublisher:actor=>auth.publisherEnabled(actor)};
   app.disable('x-powered-by');
   app.use((req,res,next)=>{
     req.requestId=randomUUID();
@@ -62,7 +64,7 @@ export function createApp(service,{origin='http://localhost:3210',auth,mode='fak
     const context={actor:req.actor,requestId:req.requestId};
     try {
       const data=await handler(req,context);
-      if(!['template.publish','template.restore'].includes(action)) store.audit(action,{...context,template:req.params.name,outcome:'success'});
+      if(!['template.publish','template.restore','review.request','review.decision'].includes(action)) store.audit(action,{...context,template:req.params.name,outcome:'success'});
       res.json(data);
     } catch(error) {
       store.audit(action,{...context,template:service.config.templates.some(t=>t.name===req.params.name)?req.params.name:undefined,outcome:error.status===502?'unconfirmed':'rejected'});
@@ -74,9 +76,14 @@ export function createApp(service,{origin='http://localhost:3210',auth,mode='fak
     const result=await service.open(req.params.name);
     res.json({...result,editorHtml:previewDocument(result.template.html)});
   });
+  app.post('/api/templates/:name/reviews',change('review.request',(req,context)=>service.reviews.request(req.params.name,req.body,context)));
+  app.post('/api/templates/:name/revisions/:id/reviews',permit('publisher'),change('review.request',(req,context)=>service.reviews.request(req.params.name,req.body,context,req.params.id)));
+  app.get('/api/templates/:name/reviews/:id',(req,res)=>res.json(service.reviews.detail(req.params.name,req.params.id)));
+  app.post('/api/templates/:name/reviews/:id/decision',permit('publisher'),change('review.decision',(req,context)=>service.reviews.decide(req.params.name,req.params.id,req.body,context)));
+  app.post('/api/templates/:name/reviews/:id/execute',permit('publisher'),change('review.execute',(req,context)=>service.reviews.execute(req.params.name,req.params.id,req.body,context)));
   app.get('/api/templates/:name/review',async(req,res)=>res.json(await service.reviewDraft(req.params.name)));
   app.get('/api/templates/:name/publications/:id',(req,res)=>res.json(service.publication(req.params.name,req.params.id)));
-  app.put('/api/templates/:name/draft',permit('editor'),change('draft.save',(req)=>service.save(req.params.name,req.body)));
+  app.put('/api/templates/:name/draft',permit('editor'),change('draft.save',(req,context)=>service.save(req.params.name,req.body,context)));
   app.post('/api/templates/:name/discard',permit('editor'),change('draft.discard',(req)=>service.discard(req.params.name,req.body.version)));
   app.post('/api/templates/:name/preview',permit('editor'),async(req,res)=>res.json(await service.preview(req.params.name,req.body)));
   app.post('/api/templates/:name/publish',permit('publisher'),change('template.publish',(req,context)=>service.publish(req.params.name,req.body,context)));

@@ -11,3 +11,5 @@ Schema version 1 adds publication intents/results and protection against applica
 Preimage, intent, pending evidence and audit intent commit before any SES update. Failed local persistence makes no remote write. An uncertain write blocks publishing. Run the existing offline recovery procedure with the service stopped. Recovery appends recovered_success or recovered_unchanged to the original publication when SES matches one recorded candidate; unknown content remains blocked. It never rewrites the original intent or invents the original actor.
 
 Local acceptance covers exact bytes and missing parts, repeated edits/restart, immutable records, atomic intent failure, uncertain-write recovery, legacy migration, source comparison and fake/AWS-adapter request metadata. Live AWS request IDs and real CloudTrail correlation remain unverified until separately authorized.
+
+When independent approval is enabled, publication evidence also identifies the consumed review request. The immutable request retains the exact approved content and decision. See [approval workflow](approvals.md).
