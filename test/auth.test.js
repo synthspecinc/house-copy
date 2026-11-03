@@ -121,7 +121,10 @@ test('allowlist changes, local blocking and revocation apply to existing session
   f.policy.users[1].disabled=false;f.policy.users[1].role='publisher';
   login=await f.login();changeAccess(f.store,f.provider.issuer,'publisher','revoke');
   assert.equal((await f.request('/auth/session',{headers:{Cookie:login.cookie}})).status,401);
-  const flow=await f.flow();changeAccess(f.store,f.provider.issuer,'publisher','block');
+  const flow=await f.flow();
+  const privatePolicy=join(f.dir,'operator-auth.json');writeFileSync(privatePolicy,JSON.stringify(f.policy));
+  const blocked=spawnSync(process.execPath,['scripts/auth-access.js','block','publisher'],{env:{...process.env,HOUSE_COPY_AUTH_CONFIG:privatePolicy,HOUSE_COPY_DB:f.path},encoding:'utf8'});
+  assert.equal(blocked.status,0,blocked.stderr);assert.match(blocked.stdout,/Access change recorded/);
   assert.equal((await f.finish(flow)).status,403);
   changeAccess(f.store,f.provider.issuer,'publisher','unblock');
   assert.equal((await f.request('/auth/session',{headers:{Cookie:login.cookie}})).status,401);
