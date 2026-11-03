@@ -1,0 +1,114 @@
+{
+  "templates": [
+    {
+      "name": "house-copy-welcome",
+      "label": "Workspace welcome",
+      "description": "The first hello after someone joins a workspace.",
+      "sample": {
+        "person": {
+          "firstName": "Alex"
+        },
+        "company": {
+          "name": "North House"
+        },
+        "project": {
+          "name": "Spring launch"
+        },
+        "actionUrl": "https://example.test/workspace?token=sample",
+        "preferencesUrl": "https://example.test/preferences?token=sample"
+      },
+      "fields": [
+        {
+          "id": "subject",
+          "label": "Subject line",
+          "targets": [
+            {
+              "part": "subject"
+            }
+          ]
+        },
+        {
+          "id": "headline",
+          "label": "Headline",
+          "targets": [
+            {
+              "part": "html",
+              "selector": "#headline"
+            },
+            {
+              "part": "text",
+              "segment": 1,
+              "separator": "\n\n"
+            }
+          ]
+        },
+        {
+          "id": "greeting",
+          "label": "Greeting",
+          "targets": [
+            {
+              "part": "html",
+              "selector": "#greeting"
+            },
+            {
+              "part": "text",
+              "segment": 2,
+              "separator": "\n\n"
+            }
+          ]
+        },
+        {
+          "id": "intro",
+          "label": "Introduction",
+          "targets": [
+            {
+              "part": "html",
+              "selector": "#intro"
+            },
+            {
+              "part": "text",
+              "segment": 3,
+              "separator": "\n\n"
+            }
+          ]
+        },
+        {
+          "id": "action",
+          "label": "Button label",
+          "targets": [
+            {
+              "part": "html",
+              "selector": "#action"
+            },
+            {
+              "part": "text",
+              "segment": 5,
+              "separator": "\n\n",
+              "suffix": ": {{actionUrl}}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "house-copy-receipt",
+      "label": "Order receipt",
+      "description": "A protected template. An operator must map its editable content first.",
+      "sample": {
+        "person": {
+          "firstName": "Alex"
+        },
+        "order": {
+          "id": "DEMO-42",
+          "items": [
+            {
+              "name": "Notebook",
+              "price": "12.00"
+            }
+          ]
+        }
+      },
+      "fields": []
+    }
+  ]
+}

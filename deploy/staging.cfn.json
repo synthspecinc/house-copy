@@ -1,0 +1,381 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "House Copy Staging pilot. Dedicated ECS runtime role and one EC2-backed service. Review before deployment.",
+  "Parameters": {
+    "Image": {
+      "Type": "String",
+      "Description": "Private ECR image URI pinned to a reviewed sha256 digest",
+      "AllowedPattern": ".+@sha256:[a-f0-9]{64}"
+    },
+    "RepositoryArn": {
+      "Type": "String",
+      "Description": "ECR repository ARN for that image"
+    },
+    "TemplateName": {
+      "Type": "String",
+      "Description": "One explicitly authorized disposable SES template name",
+      "AllowedPattern": "[A-Za-z0-9_-]{1,64}"
+    },
+    "PublicOrigin": {
+      "Type": "String",
+      "Description": "HTTPS origin served by the private authenticated reverse proxy, without trailing slash",
+      "AllowedPattern": "https://[^/ ]+"
+    },
+    "Cluster": {
+      "Type": "String",
+      "Description": "Reviewed ECS cluster ARN"
+    },
+    "Subnets": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Private subnets on the dedicated ECS EC2 host"
+    },
+    "SecurityGroups": {
+      "Type": "List<AWS::EC2::SecurityGroup::Id>",
+      "Description": "Security groups allowing port 3210 only from the approved reverse proxy"
+    },
+    "TargetGroupArn": {
+      "Type": "String",
+      "Description": "Existing private ALB IP target group, HTTP 3210, health path /health"
+    },
+    "DataDirectory": {
+      "Type": "String",
+      "Default": "/var/lib/house-copy",
+      "Description": "Dedicated host directory on encrypted EBS, owned by UID 1000. Local filesystem only."
+    },
+    "ConfigDirectory": {
+      "Type": "String",
+      "Default": "/etc/house-copy",
+      "Description": "Private host directory containing templates.json and editor-password. Never commit these files."
+    }
+  },
+  "Resources": {
+    "RuntimeRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "Description": "House Copy only. Does not reuse the reference application role.",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "EditApprovedTemplate",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ses:GetEmailTemplate",
+                    "ses:UpdateEmailTemplate"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:template/${TemplateName}"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "aws:RequestedRegion": {
+                        "Ref": "AWS::Region"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Logs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "RetentionInDays": 14
+      }
+    },
+    "ExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ecs-tasks.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "PullImageAndWriteLogs",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:GetAuthorizationToken"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "ecr:BatchCheckLayerAvailability",
+                    "ecr:GetDownloadUrlForLayer",
+                    "ecr:BatchGetImage"
+                  ],
+                  "Resource": {
+                    "Ref": "RepositoryArn"
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Logs",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "Task": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "RequiresCompatibilities": [
+          "EC2"
+        ],
+        "NetworkMode": "awsvpc",
+        "Cpu": "256",
+        "Memory": "512",
+        "TaskRoleArn": {
+          "Fn::GetAtt": [
+            "RuntimeRole",
+            "Arn"
+          ]
+        },
+        "ExecutionRoleArn": {
+          "Fn::GetAtt": [
+            "ExecutionRole",
+            "Arn"
+          ]
+        },
+        "Volumes": [
+          {
+            "Name": "data",
+            "Host": {
+              "SourcePath": {
+                "Ref": "DataDirectory"
+              }
+            }
+          },
+          {
+            "Name": "private-config",
+            "Host": {
+              "SourcePath": {
+                "Ref": "ConfigDirectory"
+              }
+            }
+          }
+        ],
+        "ContainerDefinitions": [
+          {
+            "Name": "house-copy",
+            "Image": {
+              "Ref": "Image"
+            },
+            "Essential": true,
+            "User": "1000:1000",
+            "ReadonlyRootFilesystem": true,
+            "PortMappings": [
+              {
+                "ContainerPort": 3210,
+                "Protocol": "tcp"
+              }
+            ],
+            "LinuxParameters": {
+              "InitProcessEnabled": true,
+              "Capabilities": {
+                "Drop": [
+                  "ALL"
+                ]
+              }
+            },
+            "MountPoints": [
+              {
+                "SourceVolume": "data",
+                "ContainerPath": "/data",
+                "ReadOnly": false
+              },
+              {
+                "SourceVolume": "private-config",
+                "ContainerPath": "/run/house-copy",
+                "ReadOnly": true
+              }
+            ],
+            "Environment": [
+              {
+                "Name": "HOUSE_COPY_ADAPTER",
+                "Value": "aws"
+              },
+              {
+                "Name": "HOUSE_COPY_ORIGIN",
+                "Value": {
+                  "Ref": "PublicOrigin"
+                }
+              },
+              {
+                "Name": "AWS_REGION",
+                "Value": {
+                  "Ref": "AWS::Region"
+                }
+              },
+              {
+                "Name": "HOUSE_COPY_AWS_ACCOUNT_ID",
+                "Value": {
+                  "Ref": "AWS::AccountId"
+                }
+              },
+              {
+                "Name": "HOUSE_COPY_DB",
+                "Value": "/data/house-copy.sqlite"
+              },
+              {
+                "Name": "HOUSE_COPY_CONFIG",
+                "Value": "/run/house-copy/templates.json"
+              },
+              {
+                "Name": "HOUSE_COPY_PASSWORD_FILE",
+                "Value": "/run/house-copy/editor-password"
+              }
+            ],
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "Logs"
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": "house-copy"
+              }
+            },
+            "HealthCheck": {
+              "Command": [
+                "CMD-SHELL",
+                "node -e \"fetch('http://127.0.0.1:3210/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+              ],
+              "Interval": 30,
+              "Timeout": 5,
+              "Retries": 3,
+              "StartPeriod": 15
+            }
+          }
+        ]
+      }
+    },
+    "Service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {
+          "Ref": "Cluster"
+        },
+        "LaunchType": "EC2",
+        "DesiredCount": 1,
+        "TaskDefinition": {
+          "Ref": "Task"
+        },
+        "DeploymentConfiguration": {
+          "MinimumHealthyPercent": 0,
+          "MaximumPercent": 100
+        },
+        "PlacementConstraints": [
+          {
+            "Type": "memberOf",
+            "Expression": "attribute:house-copy == true"
+          }
+        ],
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": {
+              "Ref": "Subnets"
+            },
+            "SecurityGroups": {
+              "Ref": "SecurityGroups"
+            },
+            "AssignPublicIp": "DISABLED"
+          }
+        },
+        "LoadBalancers": [
+          {
+            "TargetGroupArn": {
+              "Ref": "TargetGroupArn"
+            },
+            "ContainerName": "house-copy",
+            "ContainerPort": 3210
+          }
+        ],
+        "HealthCheckGracePeriodSeconds": 30
+      }
+    }
+  },
+  "Outputs": {
+    "RuntimeRoleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "RuntimeRole",
+          "Arn"
+        ]
+      }
+    },
+    "TaskDefinitionArn": {
+      "Value": {
+        "Ref": "Task"
+      }
+    }
+  }
+}

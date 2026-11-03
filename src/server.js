@@ -1,0 +1,22 @@
+import { readFileSync } from 'node:fs';
+import { Store } from './store.js';
+import { FakeSes, AwsSes, verifyAccount } from './adapters.js';
+import { TemplateService } from './service.js';
+import { createApp } from './app.js';
+
+const mode=process.env.HOUSE_COPY_ADAPTER || 'fake';
+if (!['fake','aws'].includes(mode)) throw new Error('HOUSE_COPY_ADAPTER must be fake or aws.');
+const port=Number(process.env.PORT || 3210);
+const region=process.env.AWS_REGION;
+const account=process.env.HOUSE_COPY_AWS_ACCOUNT_ID;
+const origin=process.env.HOUSE_COPY_ORIGIN || `http://localhost:${port}`;
+const password=process.env.HOUSE_COPY_PASSWORD_FILE ? readFileSync(process.env.HOUSE_COPY_PASSWORD_FILE,'utf8').trim() : undefined;
+if (mode==='aws' && (!password || password.length<24 || !origin.startsWith('https://'))) throw new Error('AWS mode requires an HTTPS origin and a password file with at least 24 characters.');
+if (mode==='aws') await verifyAccount(region,account);
+const store=new Store(process.env.HOUSE_COPY_DB || './data/house-copy.sqlite');
+store.bindScope(mode,region,account);
+const config=JSON.parse(readFileSync(process.env.HOUSE_COPY_CONFIG || './config/templates.json','utf8'));
+const adapter=mode==='fake' ? new FakeSes(store,JSON.parse(readFileSync('./fixtures/templates.json','utf8'))) : new AwsSes(region);
+const service=new TemplateService(store,adapter,config);
+const server=createApp(service,{origin,password,mode}).listen(port,process.env.HOST || '127.0.0.1',()=>console.log(`House Copy is listening on port ${port} in ${mode} mode.`));
+for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>server.close(()=>{store.close();process.exit(0);}));

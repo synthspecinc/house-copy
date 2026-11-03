@@ -1,0 +1,14 @@
+[
+  {
+    "name": "house-copy-welcome",
+    "subject": "Welcome to {{company.name}}, {{person.firstName}}",
+    "html": "<!doctype html>\n<html><head><meta charset=\"utf-8\"><style>body{margin:0;background:#f3f2ed;color:#203b34;font:17px Georgia,serif}.card{max-width:520px;margin:32px auto;background:white;padding:40px}h1{font-size:32px}a{display:inline-block;background:#205d49;color:white;padding:12px 20px;text-decoration:none}footer{margin-top:36px;font:12px Arial;color:#64736c}</style></head><body><main class=\"card\"><p>NORTH HOUSE</p><h1 id=\"headline\">A good place to start</h1><p id=\"greeting\">Hello {{person.firstName}}, welcome home.</p><p id=\"intro\">Your workspace is ready. Make yourself at home and take a look around.</p>{{#if project}}<p>Your first project is {{project.name}}.</p>{{/if}}<p><a href=\"{{actionUrl}}\" id=\"action\">Open your workspace</a></p><footer>Sent by {{company.name}}. <span>Manage preferences at {{preferencesUrl}}</span></footer></main></body></html>\n",
+    "text": "NORTH HOUSE\n\nA good place to start\n\nHello {{person.firstName}}, welcome home.\n\nYour workspace is ready. Make yourself at home and take a look around.\n\n{{#if project}}Your first project is {{project.name}}.{{/if}}\n\nOpen your workspace: {{actionUrl}}\n\nSent by {{company.name}}. Manage preferences at {{preferencesUrl}}\n"
+  },
+  {
+    "name": "house-copy-receipt",
+    "subject": "Receipt {{order.id}}",
+    "html": "<h1>Thank you, {{person.firstName}}</h1>{{#each order.items}}<p>{{name}}: {{price}}</p>{{/each}}<a href=\"https://example.test/orders/{{order.id}}\">View order</a>",
+    "text": "Thank you, {{person.firstName}}\n{{#each order.items}}{{name}}: {{price}}\n{{/each}}https://example.test/orders/{{order.id}}"
+  }
+]

@@ -1,0 +1,18 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check
+      - run: npm run notices && git diff --exit-code -- THIRD_PARTY_NOTICES.md third_party
+      - run: docker build -t house-copy:ci .
