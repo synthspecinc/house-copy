@@ -108,11 +108,12 @@ export class OidcAuth {
       const tokens=await oidc.authorizationCodeGrant(this.config,responseUrl,{pkceCodeVerifier:flow.verifier,expectedState:flow.state,expectedNonce:flow.nonce,maxAge:0,idTokenExpected:true});
       const claims=tokens.claims();
       verifiedActor={issuer:claims.iss,subject:claims.sub,role:'unassigned'};
-      const {sessionToken,session}=this.createSession(claims);
-      const old=cookie(req,SESSION_COOKIE);
-      if(old) this.store.db.prepare('DELETE FROM auth_sessions WHERE hash=?').run(hash(old));
+      const {sessionToken,session}=this.store.transaction(()=>{
+        const issued=this.createSession(claims),old=cookie(req,SESSION_COOKIE);
+        if(old) this.store.db.prepare('DELETE FROM auth_sessions WHERE hash=?').run(hash(old));
+        this.audit('auth.login',{actor:issued.session.actor,requestId:req.requestId,outcome:'success'});return issued;
+      });
       setCookie(res,SESSION_COOKIE,sessionToken,session.expires-this.now());
-      this.audit('auth.login',{actor:session.actor,requestId:req.requestId,outcome:'success'});
       res.redirect('/');
     } catch(error) {
       this.audit('auth.login',{actor:verifiedActor,requestId:req.requestId,outcome:'denied'});

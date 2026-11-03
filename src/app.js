@@ -6,9 +6,10 @@ import { Problem, previewDocument } from './editor.js';
 import { fingerprint } from './editor.js';
 import { demoActor } from './auth.js';
 
-export function createApp(service,{origin='http://localhost:3210',auth,mode='fake',limits={}}={}) {
+export function createApp(service,{origin='http://localhost:3210',auth,mode='fake',limits={},delivery}={}) {
   if(!auth && mode!=='fake') throw new Error('Real SES requires individual OIDC authentication.');
   const app=express(),store=service.store;
+  if(delivery) service.publicationGate=()=>delivery.assertCanPublish();
   if(auth) service.authority={version:()=>fingerprint(auth.policy()),isPublisher:actor=>auth.publisherEnabled(actor)};
   app.disable('x-powered-by');
   app.use((req,res,next)=>{
@@ -71,6 +72,7 @@ export function createApp(service,{origin='http://localhost:3210',auth,mode='fak
       throw error;
     }
   };
+  app.get('/api/audit-delivery',permit('publisher'),(req,res)=>res.json(delivery?delivery.health():{configured:false,required:false,publishingPaused:false}));
   app.get('/api/templates',(req,res)=>res.json({mode,templates:service.list()}));
   app.get('/api/templates/:name',async(req,res)=>{
     const result=await service.open(req.params.name);

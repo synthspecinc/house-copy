@@ -12,6 +12,11 @@
 | HOUSE_COPY_AUTH | unset | Required. `oidc`, or explicit `demo` with fake SES and a loopback public origin. |
 | HOUSE_COPY_AUTH_CONFIG | unset | Private OIDC issuer/client/user policy JSON. Required for OIDC. |
 | HOUSE_COPY_OIDC_SECRET_FILE | unset | Mounted OIDC client secret. Required for OIDC. |
+| HOUSE_COPY_AUDIT_URL | unset | HTTPS collector endpoint without credentials, query or fragment. |
+| HOUSE_COPY_AUDIT_TOKEN_FILE | unset | Private mounted bearer credential file. |
+| HOUSE_COPY_AUDIT_REQUIRED | true for aws, false for fake | Pause publishing when required delivery falls behind. |
+| HOUSE_COPY_AUDIT_MAX_PENDING | 1000 | Pause at this many undelivered events when delivery is required. |
+| HOUSE_COPY_AUDIT_MAX_AGE_SECONDS | 300 | Pause when the oldest pending event exceeds this age. |
 | AWS_REGION | unset | Required in AWS mode. No implicit region. |
 | HOUSE_COPY_AWS_ACCOUNT_ID | unset | Expected 12-digit account ID. Checked with STS before serving in AWS mode. |
 | HOST | 127.0.0.1 | Bind address. The container sets 0.0.0.0 and Compose publishes only localhost. |
@@ -26,9 +31,11 @@ See [authentication](authentication.md) for user access, logout, blocking, revoc
 
 ## Backup and retention
 
-The volume contains private drafts, complete revision preimages and pending write evidence. Stop this service alone before copying the database and its SQLite sidecars together. Use an encrypted operator backup location with access restrictions. Start the same service afterward. Verify a restore into a separate disposable volume before relying on backups. Do not remove the original volume. Docker Compose `down` without `--volumes` preserves it.
+The volume contains private drafts, exact publication/review snapshots, complete revision preimages, pending write evidence, sessions and the audit outbox. Stop this service alone before copying the database and its SQLite sidecars together. Use an encrypted operator backup location with access restrictions. Start the same service afterward. Verify a restore into a separate disposable volume before relying on backups. Do not remove the original volume. Docker Compose `down` without `--volumes` preserves it.
 
 Restoring a database also restores its session and block state. Before starting the restored service, keep the current private auth policy, reapply current disable/block decisions and revoke sessions for every allowlisted subject with the authentication access command. This prevents a recent backup from reviving a revoked session.
+
+See [audit delivery](audit-delivery.md) for collector setup, health signals and retry operations. Keep the current collector destination when restoring a backup so stable event IDs deduplicate replay.
 
 House Copy keeps all revisions. There is no automatic retention pruning or destructive cleanup. Operators own volume capacity and retention policy. The health endpoint proves the HTTP process responds; live SES availability is checked when opening or writing a template.
 

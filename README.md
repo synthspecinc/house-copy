@@ -63,7 +63,7 @@ See [verification evidence and outstanding acceptance checks](docs/verification.
 
 Use the operator-owned mappings described in [field mapping](docs/field-mapping.md). Approved fields can target HTML and text together. House Copy preserves unedited source bytes, Handlebars expressions and dynamic URLs. It supports text content editing, not arbitrary HTML design changes. Missing parts remain missing.
 
-Use the generic [IAM policy](deploy/iam.example.json) with a dedicated role and exact template ARNs. Configure the expected account and region. AWS mode requires individual OIDC sign-in, an HTTPS origin and persistent storage. Editors can draft and preview. Publishers can also publish and restore after a verified MFA sign-in. See [authentication setup and session revocation](docs/authentication.md). See [operations](docs/operations.md), [security](SECURITY.md) and the [Staging deployment proposal](deploy/README.md). Do not copy real content, credentials or private deployment parameters into this repository.
+Use the generic [IAM policy](deploy/iam.example.json) with a dedicated role and exact template ARNs. Configure the expected account and region. AWS mode requires individual OIDC sign-in, an HTTPS origin, persistent storage and an HTTPS audit collector by default. Editors can draft and preview. Publishers can also publish and restore after a verified MFA sign-in. See [authentication setup and session revocation](docs/authentication.md). See [operations](docs/operations.md), [security](SECURITY.md) and the [Staging deployment proposal](deploy/README.md). Do not copy real content, credentials or private deployment parameters into this repository.
 
 The application uses SES v2 GetEmailTemplate and UpdateEmailTemplate. It does not create, delete or send templates. The library lists configured names and does not require broad listing permissions. Local Handlebars preview needs an authorized SES test-render comparison before claiming provider parity. [AWS's template API](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_UpdateEmailTemplate.html) updates the content of an existing named template.
 
@@ -71,7 +71,7 @@ The application uses SES v2 GetEmailTemplate and UpdateEmailTemplate. It does no
 
 [The security design](docs/security-design.md) describes OIDC, per-request user permissions, revocable sessions, CSRF protection and actor-attributed publishing history. The local demo uses a labeled synthetic actor. Real SES connections require individual authentication. House Copy has no local passwords or public registration.
 
-See [publication history](docs/publication-history.md), [independent approval](docs/approvals.md) and the [publishing controls design](docs/publishing-controls-design.md) for complete change evidence and optional two-person publishing.
+See [publication history](docs/publication-history.md), [independent approval](docs/approvals.md) and the [publishing controls design](docs/publishing-controls-design.md) for complete change evidence and optional two-person publishing. [Durable audit delivery](docs/audit-delivery.md) forwards redacted events to an operator-owned collector and pauses publishing when required delivery falls behind.
 
 ## Project status and release
 

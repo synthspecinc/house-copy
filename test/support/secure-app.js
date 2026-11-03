@@ -2,7 +2,7 @@ import https from 'node:https';
 import { OidcAuth,SESSION_COOKIE } from '../../src/auth.js';
 import { createApp } from '../../src/app.js';
 import { identityProvider } from './identity-provider.js';
-export async function secureApp({service,store,limits,appPort=0,idpPort=0}) {
+export async function secureApp({service,store,limits,delivery,appPort=0,idpPort=0}) {
   const provider=await identityProvider({port:idpPort});
   let app;
   const server=https.createServer(provider.tls,(req,res)=>app(req,res));
@@ -13,7 +13,7 @@ export async function secureApp({service,store,limits,appPort=0,idpPort=0}) {
   let auth;
   try {auth=await new OidcAuth(store,{origin,clientSecret:provider.secret,loadPolicy:()=>policy,now:()=>clock,transport:provider.transport}).initialize();}
   catch(error) {await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});await provider.close();throw error;}
-  app=createApp(service,{origin,auth,limits});
+  app=createApp(service,{origin,auth,limits,delivery});
   const request=(path,options={})=>provider.transport(path.startsWith('https:')?path:`${origin}${path}`,{redirect:'manual',...options});
   const flow=async()=>{
     const start=await request('/auth/login');
