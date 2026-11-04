@@ -40,7 +40,7 @@ Use Node.js 24 or 25:
 
 ```sh
 npm ci --ignore-scripts
-npm start
+HOUSE_COPY_AUTH=demo npm start
 ```
 
 Open http://localhost:3210. Development data lives in `data/`, which Git ignores. For tests:
@@ -63,13 +63,17 @@ See [verification evidence and outstanding acceptance checks](docs/verification.
 
 Use the operator-owned mappings described in [field mapping](docs/field-mapping.md). Approved fields can target HTML and text together. House Copy preserves unedited source bytes, Handlebars expressions and dynamic URLs. It supports text content editing, not arbitrary HTML design changes. Missing parts remain missing.
 
-Use the generic [IAM policy](deploy/iam.example.json) with a dedicated role and exact template ARNs. Configure the expected account and region. AWS mode requires a password file, an HTTPS origin and persistent storage. See [operations](docs/operations.md), [security](SECURITY.md) and the [Staging deployment proposal](deploy/README.md). Do not copy real content, credentials or private deployment parameters into this repository.
+Use the generic [IAM policy](deploy/iam.example.json) with a dedicated role and exact template ARNs. Configure the expected account and region. AWS mode requires individual OIDC sign-in, an HTTPS origin and persistent storage. Editors can draft and preview. Publishers can also publish and restore after a verified MFA sign-in. See [authentication setup and session revocation](docs/authentication.md). See [operations](docs/operations.md), [security](SECURITY.md) and the [Staging deployment proposal](deploy/README.md). Do not copy real content, credentials or private deployment parameters into this repository.
 
 The application uses SES v2 GetEmailTemplate and UpdateEmailTemplate. It does not create, delete or send templates. The library lists configured names and does not require broad listing permissions. Local Handlebars preview needs an authorized SES test-render comparison before claiming provider parity. [AWS's template API](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_UpdateEmailTemplate.html) updates the content of an existing named template.
 
+## Security design
+
+[The security design](docs/security-design.md) describes OIDC, per-request user permissions, revocable sessions, CSRF protection and actor-attributed publishing history. The local demo uses a labeled synthetic actor. Real SES connections require individual authentication. House Copy has no local passwords or public registration.
+
 ## Project status and release
 
-This implementation follows the requirements in the implementation request. The referenced attached brief did not reach the workspace or thread. Its scope and acceptance tests must still be reconciled when it is supplied. No live Staging checks, live Huskar policy inspection or human usability session have run. Nothing has been published or deployed.
+This implementation follows the requirements in the implementation request. The referenced attached brief did not reach the workspace or thread. Its scope and acceptance tests must still be reconciled when it is supplied. No live Staging checks, live Huskar policy inspection or human usability session have run. No release artifact has been published or deployed by this work.
 
 The stack is Node.js, Express, browser JavaScript, Handlebars, parse5 and SQLite. One process owns one local persistent database. See [contribution instructions](CONTRIBUTING.md) and the [public release checklist](docs/release.md).
 

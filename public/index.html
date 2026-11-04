@@ -2,9 +2,10 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>House Copy</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body>
-<header><a class="brand" href="/" aria-label="House Copy home"><span class="brand-mark">H<span>C</span></span><span>House Copy<small>A little room for better emails.</small></span></a><span class="environment" id="environment">Loading</span></header>
+<header><a class="brand" href="/" aria-label="House Copy home"><span class="brand-mark">H<span>C</span></span><span>House Copy<small>Edit your SES templates.</small></span></a><div class="account"><span class="environment" id="environment">Loading</span><span id="account-name"></span><button id="logout" class="text-button" hidden>Sign out</button></div></header>
 <main>
-<section id="library"><div class="eyebrow">YOUR EMAIL LIBRARY</div><h1>Make yourself understood.</h1><p class="lede">A familiar home for your email copy. Choose a template to make it yours.</p><div id="templates" class="template-grid"></div><p class="quiet">Your application keeps using the same template names. Changes go live only when you publish.</p></section>
+<section id="session-notice" class="notice" hidden><p id="session-message">Sign in with your organization account to open House Copy.</p><a id="sign-in" href="/auth/login" target="_blank" rel="noopener">Sign in in a new tab</a><button id="resume" class="text-button">Resume after sign-in</button></section>
+<section id="library" hidden><div class="eyebrow">YOUR EMAIL LIBRARY</div><h1>Make yourself understood.</h1><p class="lede">Open a template to edit approved content and preview it before publishing.</p><div id="templates" class="template-grid"></div><p class="quiet">Your application keeps using the same template names. Changes go live only when you publish.</p></section>
 <section id="editor" hidden>
 <nav><button id="back" class="text-button">← All templates</button><span id="template-name" class="mono"></span></nav>
 <div class="title-row"><div><div class="eyebrow">TEMPLATE STUDIO</div><h1 id="template-label"></h1></div><span id="draft-state" class="pill">Published</span></div>

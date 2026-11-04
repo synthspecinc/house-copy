@@ -49,6 +49,7 @@ House Copy bundles the following runtime packages. Their licenses and notices ar
 | escape-html | 1.0.3 | MIT | [LICENSE](third_party/licenses/escape-html/1.0.3/LICENSE) |
 | etag | 1.8.1 | MIT | [LICENSE](third_party/licenses/etag/1.8.1/LICENSE) |
 | express | 5.3.0 | MIT | [LICENSE](third_party/licenses/express/5.3.0/LICENSE) |
+| express-rate-limit | 8.7.3 | MIT | [license](third_party/licenses/express-rate-limit/8.7.3/license) |
 | finalhandler | 2.1.1 | MIT | [LICENSE](third_party/licenses/finalhandler/2.1.1/LICENSE) |
 | forwarded | 0.2.0 | MIT | [LICENSE](third_party/licenses/forwarded/0.2.0/LICENSE) |
 | fresh | 2.0.0 | MIT | [LICENSE](third_party/licenses/fresh/2.0.0/LICENSE) |
@@ -62,8 +63,10 @@ House Copy bundles the following runtime packages. Their licenses and notices ar
 | http-errors | 2.0.1 | MIT | [LICENSE](third_party/licenses/http-errors/2.0.1/LICENSE) |
 | iconv-lite | 0.7.3 | MIT | [LICENSE](third_party/licenses/iconv-lite/0.7.3/LICENSE) |
 | inherits | 2.0.4 | ISC | [LICENSE](third_party/licenses/inherits/2.0.4/LICENSE) |
+| ip-address | 10.7.5 | MIT | [LICENSE](third_party/licenses/ip-address/10.7.5/LICENSE) |
 | ipaddr.js | 1.9.1 | MIT | [LICENSE](third_party/licenses/ipaddr.js/1.9.1/LICENSE) |
 | is-promise | 4.0.0 | MIT | [LICENSE](third_party/licenses/is-promise/4.0.0/LICENSE) |
+| jose | 6.2.15 | MIT | [LICENSE.md](third_party/licenses/jose/6.2.15/LICENSE.md) |
 | math-intrinsics | 1.1.0 | MIT | [LICENSE](third_party/licenses/math-intrinsics/1.1.0/LICENSE) |
 | media-typer | 1.1.1 | MIT | [LICENSE](third_party/licenses/media-typer/1.1.1/LICENSE) |
 | merge-descriptors | 2.0.0 | MIT | [license](third_party/licenses/merge-descriptors/2.0.0/license) |
@@ -73,9 +76,11 @@ House Copy bundles the following runtime packages. Their licenses and notices ar
 | ms | 2.1.3 | MIT | [license.md](third_party/licenses/ms/2.1.3/license.md) |
 | negotiator | 1.1.0 | MIT | [LICENSE](third_party/licenses/negotiator/1.1.0/LICENSE) |
 | neo-async | 2.6.2 | MIT | [LICENSE](third_party/licenses/neo-async/2.6.2/LICENSE) |
+| oauth4webapi | 3.8.8 | MIT | [LICENSE.md](third_party/licenses/oauth4webapi/3.8.8/LICENSE.md) |
 | object-inspect | 1.13.4 | MIT | [LICENSE](third_party/licenses/object-inspect/1.13.4/LICENSE) |
 | on-finished | 2.4.2 | MIT | [LICENSE](third_party/licenses/on-finished/2.4.2/LICENSE) |
 | once | 1.4.0 | ISC | [LICENSE](third_party/licenses/once/1.4.0/LICENSE) |
+| openid-client | 6.8.9 | MIT | [LICENSE.md](third_party/licenses/openid-client/6.8.9/LICENSE.md) |
 | parse5 | 8.1.0 | MIT | [LICENSE](third_party/licenses/parse5/8.1.0/LICENSE) |
 | parseurl | 1.3.3 | MIT | [LICENSE](third_party/licenses/parseurl/1.3.3/LICENSE) |
 | path-to-regexp | 8.4.2 | MIT | [LICENSE](third_party/licenses/path-to-regexp/8.4.2/LICENSE) |

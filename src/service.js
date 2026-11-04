@@ -54,7 +54,7 @@ export class TemplateService {
     const result=render(template,body.sample);
     return {...result,html:previewDocument(result.html)};
   }
-  async publish(name, body) {
+  async publish(name, body,context={}) {
     this.mapping(name);
     return this.store.lock(name,async()=>{
       const draft=this.store.draft(name);
@@ -63,12 +63,12 @@ export class TemplateService {
       if (body.confirmName!==name) throw new Problem(422,'Confirm the template name before publishing.');
       // Validate all parts and sample data before any remote write.
       render(draft.template,body.sample);
-      await this.write(name,draft.template,draft.baseHash,'Before publish');
+      await this.write(name,draft.template,draft.baseHash,'Before publish',context);
       this.store.deleteDraft(name);
       return this.open(name);
     });
   }
-  async restore(name,id,body) {
+  async restore(name,id,body,context={}) {
     this.mapping(name);
     return this.store.lock(name,async()=>{
       if (this.store.draft(name)) throw new Problem(409,'Discard or publish the saved draft before restoring a revision.');
@@ -76,21 +76,26 @@ export class TemplateService {
       const revision=this.store.revision(name,id);
       if (!revision) throw new Problem(404,'Revision not found.');
       // Restore is exact, including historical HTML, text, expressions and attributes.
-      await this.write(name,revision.template,body.currentHash,'Before restore');
+      await this.write(name,revision.template,body.currentHash,'Before restore',context);
       return this.open(name);
     });
   }
-  async write(name,next,expected,reason) {
+  async write(name,next,expected,reason,context={}) {
     if (this.store.pending(name).length) throw new Problem(409,'An earlier update needs operator recovery. No further writes are allowed.');
     const previous=await this.adapter.get(name);
     if (fingerprint(previous)!==expected) throw new Problem(409,'SES changed since you opened this template. Reopen it before writing.');
-    this.store.snapshot(name,previous,reason);
-    const operation=this.store.operation(name,{previous,next,created:new Date().toISOString()});
+    const revision=this.store.snapshot(name,previous,reason,context);
+    const action=reason==='Before publish'?'template.publish':'template.restore';
+    const auditContext={...context,template:name,revision:revision.id};
+    const operation=this.store.operation(name,{previous,next,created:new Date().toISOString(),actor:context.actor,requestId:context.requestId,revision:revision.id});
+    this.store.audit(action,{...auditContext,outcome:'started'});
     try {
       await this.adapter.update(next);
       if (fingerprint(await this.adapter.get(name))!==fingerprint(next)) throw new Error('Read-back mismatch');
+      this.store.audit(action,{...auditContext,outcome:'success'});
       this.store.finish(operation);
     } catch {
+      this.store.audit(action,{...auditContext,outcome:'uncertain'});
       throw new Problem(502,'The update could not be confirmed. Your prior revision is safe. Publishing is blocked until an operator checks SES and recovers the pending operation.');
     }
   }

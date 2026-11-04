@@ -18,7 +18,7 @@
     },
     "PublicOrigin": {
       "Type": "String",
-      "Description": "HTTPS origin served by the private authenticated reverse proxy, without trailing slash",
+      "Description": "Dedicated HTTPS origin served by the private reverse proxy, without trailing slash",
       "AllowedPattern": "https://[^/ ]+"
     },
     "Cluster": {
@@ -45,7 +45,7 @@
     "ConfigDirectory": {
       "Type": "String",
       "Default": "/etc/house-copy",
-      "Description": "Private host directory containing templates.json and editor-password. Never commit these files."
+      "Description": "Private host directory containing templates.json, auth.json and oidc-client-secret. Never commit these files."
     }
   },
   "Resources": {
@@ -288,8 +288,16 @@
                 "Value": "/run/house-copy/templates.json"
               },
               {
-                "Name": "HOUSE_COPY_PASSWORD_FILE",
-                "Value": "/run/house-copy/editor-password"
+                "Name": "HOUSE_COPY_AUTH",
+                "Value": "oidc"
+              },
+              {
+                "Name": "HOUSE_COPY_AUTH_CONFIG",
+                "Value": "/run/house-copy/auth.json"
+              },
+              {
+                "Name": "HOUSE_COPY_OIDC_SECRET_FILE",
+                "Value": "/run/house-copy/oidc-client-secret"
               }
             ],
             "LogConfiguration": {

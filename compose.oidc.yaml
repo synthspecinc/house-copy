@@ -1,0 +1,16 @@
+# Combine with compose.yaml. TLS terminates at an operator-owned reverse proxy.
+# The private directory contains auth.json and oidc-client-secret.
+services:
+  house-copy:
+    environment:
+      HOUSE_COPY_AUTH: oidc
+      HOUSE_COPY_ORIGIN: "${HOUSE_COPY_PUBLIC_ORIGIN:?Set the dedicated HTTPS origin}"
+      HOUSE_COPY_AUTH_CONFIG: /run/house-copy/auth.json
+      HOUSE_COPY_OIDC_SECRET_FILE: /run/house-copy/oidc-client-secret
+    volumes:
+      - type: bind
+        source: "${HOUSE_COPY_PRIVATE_DIR:?Set an absolute private directory outside this repo}"
+        target: /run/house-copy
+        read_only: true
+        bind:
+          create_host_path: false

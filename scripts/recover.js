@@ -23,5 +23,6 @@ try {
     console.log(hash===fingerprint(pending.next)?'Confirmed the intended update. Prior revision retained.':'Confirmed SES still has the prior version. Saved draft retained.');
   }
   store.db.prepare('DELETE FROM locks WHERE name=?').run(name);
+  store.audit('operator.recover',{actor:{issuer:'house-copy:operator',subject:`uid:${process.getuid?.() ?? 'unknown'}`,role:'operator'},template:name,outcome:'success'});
   console.log('Recovery complete for the selected template. No remote writes were made.');
 } finally {store.close();}

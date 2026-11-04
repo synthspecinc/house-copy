@@ -5,6 +5,7 @@ services:
       - "127.0.0.1:${HOUSE_COPY_PORT:-3210}:3210"
     environment:
       HOUSE_COPY_ADAPTER: fake
+      HOUSE_COPY_AUTH: demo
       HOUSE_COPY_ORIGIN: "http://localhost:${HOUSE_COPY_PORT:-3210}"
     volumes:
       - house-copy-data:/data

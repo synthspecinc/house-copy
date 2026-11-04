@@ -41,7 +41,11 @@ test('ambiguous remote failure preserves preimage and blocks retries, including 
   const saved=await service.save(open.name,body(open,{headline:'New headline'}));
   const update=adapter.update.bind(adapter);
   adapter.update=async next=>{await update(next); throw new Error('Network lost after SES accepted update');};
-  await assert.rejects(()=>service.publish(open.name,{version:saved.version,confirmName:open.name,sample:open.sample}),/could not be confirmed/);
+  const context={actor:{issuer:'https://identity.example.test',subject:'publisher',role:'publisher'},requestId:'interrupted-publish-test'};
+  await assert.rejects(()=>service.publish(open.name,{version:saved.version,confirmName:open.name,sample:open.sample},context),/could not be confirmed/);
+  assert.deepEqual(store.pending(open.name)[0].actor,context.actor);
+  assert.equal(store.pending(open.name)[0].requestId,context.requestId);
+  assert.ok(store.db.prepare('SELECT document FROM audit_events').all().some(row=>{const event=JSON.parse(row.document);return event.outcome==='uncertain' && event.actor.subject==='publisher' && event.requestId===context.requestId;}));
   assert.deepEqual(store.revisions(open.name)[0].template,open.template);
   assert.equal(store.pending(open.name).length,1); assert.equal((await service.open(open.name)).recoveryRequired,true);
   const restarted=new Store(path); t.after(()=>restarted.close()); assert.equal(restarted.pending(open.name).length,1);
@@ -79,4 +83,14 @@ test('removed field approvals cannot be republished through an older saved draft
   await assert.rejects(()=>service.publish(original.name,{version:saved.version,confirmName:original.name,sample:original.sample}),/configuration changed/);
   assert.deepEqual(await adapter.get(original.name),original.template);
   const fresh=await service.discard(original.name,saved.version); assert.equal(fresh.editable,true);
+});
+
+test('a failed durable audit intent prevents any remote template update',async t=>{
+  const {service,adapter,store}=setup(t); const open=await service.open(fixtures[0].name);
+  const saved=await service.save(open.name,body(open,{headline:'Must not reach SES'}));
+  let updates=0;adapter.update=async()=>{updates++;};
+  store.audit=()=>{throw new Error('Audit persistence unavailable');};
+  await assert.rejects(()=>service.publish(open.name,{version:saved.version,confirmName:open.name,sample:open.sample}),/Audit persistence/);
+  assert.equal(updates,0);assert.deepEqual(await adapter.get(open.name),open.template);
+  assert.equal(store.revisions(open.name).length,1);assert.equal(store.pending(open.name).length,1);
 });
