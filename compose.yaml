@@ -1,0 +1,22 @@
+services:
+  house-copy:
+    build: .
+    ports:
+      - "127.0.0.1:${HOUSE_COPY_PORT:-3210}:3210"
+    environment:
+      HOUSE_COPY_ADAPTER: fake
+      HOUSE_COPY_ORIGIN: "http://localhost:${HOUSE_COPY_PORT:-3210}"
+    volumes:
+      - house-copy-data:/data
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+volumes:
+  house-copy-data:
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: "${HOUSE_COPY_SUBNET:-10.203.117.0/28}"

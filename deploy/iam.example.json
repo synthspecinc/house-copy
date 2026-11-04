@@ -1,0 +1,12 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EditOneApprovedTemplate",
+      "Effect": "Allow",
+      "Action": ["ses:GetEmailTemplate", "ses:UpdateEmailTemplate"],
+      "Resource": "arn:aws:ses:REGION:ACCOUNT_ID:template/APPROVED_TEMPLATE_NAME",
+      "Condition": {"StringEquals": {"aws:RequestedRegion": "REGION"}}
+    }
+  ]
+}

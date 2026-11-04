@@ -1,0 +1,11 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+config/private*
+deploy/private*
+playwright-report/
+test-results/
+*.sqlite*
+coverage/
