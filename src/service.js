@@ -7,7 +7,8 @@ import { demoActor } from './auth.js';
 export class TemplateService {
   constructor(store, adapter, config,{environment}={}) {
     this.store=store; this.adapter=adapter; this.config=config;this.scope=store.scope(environment);this.defaultActor=this.scope.mode==='fake'?demoActor:undefined;
-    this.authority={version:()=> 'local-demo',isPublisher:actor=>actor?.role==='publisher'};this.reviews=new Reviews(this);
+    store.auditScope=this.scope;
+    this.authority={version:()=> 'local-demo',isPublisher:actor=>actor?.role==='publisher'};this.reviews=new Reviews(this);this.publicationGate=()=>{};
     if (!Array.isArray(config.templates) || new Set(config.templates.map(t=>t.name)).size !== config.templates.length) throw new Error('Template names must be unique.');
     for(const t of config.templates) this.reviews.policy(t.name);
     for (const t of config.templates) if (!/^[\w-]{1,64}$/.test(t.name) || !Array.isArray(t.fields)) throw new Error('Invalid template configuration.');
@@ -106,16 +107,18 @@ export class TemplateService {
   }
   async write(name,next,expected,reason,context={}) {
     if (this.store.pending(name).length) throw new Problem(409,'An earlier update needs operator recovery. No further writes are allowed.');
+    this.publicationGate();
     const previous=await this.adapter.get(name);
     if (fingerprint(previous)!==expected) throw new Problem(409,'SES changed since you opened this template. Reopen it before writing.');
     const action=reason==='Before publish'?'template.publish':'template.restore';
     let publication,operation,auditContext;
     this.store.transaction(()=>{
+      this.publicationGate();
       context.approvalCheck?.();
       const revision=this.store.snapshot(name,previous,reason,context);
       publication=this.store.publicationIntent(name,publicationRecord(name,previous,next,reason,context,this.scope,revision.id));
       this.reviews.consume(context.reviewId,publication.id);
-      auditContext={...context,template:name,revision:revision.id,publicationId:publication.id,beforeHash:publication.beforeHash,afterHash:publication.afterHash};
+      auditContext={...context,scope:this.scope,template:name,revision:revision.id,publicationId:publication.id,beforeHash:publication.beforeHash,afterHash:publication.afterHash};
       operation=this.store.operation(name,{previous,next,created:new Date().toISOString(),actor:context.actor,requestId:context.requestId,revision:revision.id,publicationId:publication.id});
       this.store.audit(action,{...auditContext,outcome:'started'});
     });

@@ -45,7 +45,12 @@
     "ConfigDirectory": {
       "Type": "String",
       "Default": "/etc/house-copy",
-      "Description": "Private host directory containing templates.json, auth.json and oidc-client-secret. Never commit these files."
+      "Description": "Private host directory containing templates.json, auth.json, oidc-client-secret and audit-collector-token. Never commit these files."
+    },
+    "AuditCollectorUrl": {
+      "Type": "String",
+      "Description": "Reviewed HTTPS audit collector that durably stores and deduplicates events before acknowledgement. No credentials or query parameters.",
+      "AllowedPattern": "https://[^\\s@?#]+"
     }
   },
   "Resources": {
@@ -302,6 +307,20 @@
               {
                 "Name": "HOUSE_COPY_ENVIRONMENT",
                 "Value": "staging"
+              },
+              {
+                "Name": "HOUSE_COPY_AUDIT_URL",
+                "Value": {
+                  "Ref": "AuditCollectorUrl"
+                }
+              },
+              {
+                "Name": "HOUSE_COPY_AUDIT_TOKEN_FILE",
+                "Value": "/run/house-copy/audit-collector-token"
+              },
+              {
+                "Name": "HOUSE_COPY_AUDIT_REQUIRED",
+                "Value": "true"
               }
             ],
             "LogConfiguration": {

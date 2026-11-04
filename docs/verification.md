@@ -60,6 +60,26 @@ The clean-source run retained `/tmp/house-copy-clean-iA9YSb`, log `/tmp/house-co
 
 A browser fixture initially waited on a keep-alive connection during teardown. Its cleanup now closes only that fixture's own sockets. Final browser and clean-source runs passed after that fix. Dependency/schema results describe the tested versions and date only.
 
+## Publishing controls acceptance evidence
+
+The publishing-controls follow-up on 2026-11-03 UTC passed **65 unit/integration tests and 7 Chromium browser tests**, with zero failures. The pinned Node 24 verification image passed the same 65 unit/integration tests with external networking disabled. The clean-source Compose run installed dependencies from the lockfile, ran all 65 tests, built the runtime image, ran all seven browser tests, checked persistence across restart, and verified UID 1000 with no AWS key variables. Four browser tests run their own local HTTPS app/identity-provider fixtures; three run against the Compose runtime. The HTTPS collector tests use a separate durable synthetic receiver and never contact a real collector.
+
+| Publishing control | Result | Direct evidence |
+| --- | --- | --- |
+| Complete publication history | PASS locally | Exact before/after parts and absent values, hashes, actor, scope, reason/reference and fake provider request ID survive later edits and reopening the database. Protected history rejects SQL update/delete. |
+| Uncertain-write evidence | PASS locally | Pre-write persistence failure makes no SES call. Timeout after fake acceptance retains intended content and actor. Offline reconciliation appends a result to the same publication. |
+| Independent approval | PASS API and Chromium | Two signed-in MFA-backed synthetic publishers review, approve, publish and restore. Editors can request review but cannot decide or execute. Requesters and contributors cannot approve. |
+| Approval binding and concurrency | PASS locally | Draft, mapping, policy, scope, source, metadata and authority changes fail before an update. Wrong/missing/consumed decisions, rejected reviews, legacy unknown authorship and concurrent execution are covered. |
+| Durable audit outbox | PASS locally | Event/envelope transaction rollback, legacy backfill, deterministic legacy IDs, stable replay IDs, immutable payloads/receipts and redaction. |
+| HTTPS delivery and recovery | PASS local HTTPS | Durable receiver acknowledgement, wrong/empty/oversized acknowledgements, HTTP error, timeout, redirect refusal, acknowledgement loss, restart replay and deduplication. SQLite lease excludes competing workers and expired acknowledgement. One-shot CLI exit codes and TLS are exercised. |
+| Fail-closed control boundaries | PASS locally | Required backlog count/age pauses publish and restore before a fake SES update and clears after acknowledgement. Login cannot issue a session without its audit envelope. Logout/revoke/block still remove access during audit failure; unblock remains blocked. |
+| Health and deployment configuration | PASS locally/offline | Publisher-only health excludes endpoint/credential/content. Unsafe startup/destination changes fail. CloudFormation lint and OIDC/audit Compose rendering pass with synthetic parameters. Dedicated SES IAM scope remains unchanged. |
+| Dependencies and public source | PASS local checks | Runtime dependency audit reports zero known vulnerabilities. Notices for 103 runtime packages reproduce without changes. First-party whitespace and relative documentation links pass. |
+
+The full check log is `/tmp/house-copy-controls-check.log`. Clean-source evidence is retained at `/tmp/house-copy-clean-xgjKjZ`, with log `/tmp/house-copy-controls-clean.log` and synthetic volume `house-copy-verify-20261103121705-3217353_house-copy-data`. The runtime image is `sha256:a3a5cca1548e857ade91d46af8385f570a13785fc2006af776e90e7b8daa4d97`. The Node 24 log is `/tmp/house-copy-controls-node24.log`; its image is `sha256:3a081679120500363599f20fbd9db32ccef0197794a1286389c7a15384d9594a`. Verification stopped only its own Compose project and retained the volume. BuildKit reused dependency layers. Later edits only document these results and operator procedures.
+
+An age-threshold test initially advanced a synthetic clock from a value captured before publication. It now advances from the actual event creation period. Final targeted, full-suite, Node 24 and clean-source runs all pass. These tests enable application controls; they are not SOC 2 certification or proof of operator control operation.
+
 ## Checks still required
 
 | Gate | Status | Owner and next action |
@@ -68,6 +88,8 @@ A browser fixture initially waited on a keep-alive connection during teardown. I
 | Staging account/region/template/permission authorization | NOT PROVIDED | Owner explicitly authorizes the exact account, region, disposable names and permitted actions. No live calls until then. |
 | Huskar permissions reference | UNVERIFIED | Authorized operator reads its live policy and compares only relevant SES permissions. Do not reuse the role. |
 | Real OIDC provider, MFA claims, account disable and revocation | UNVERIFIED | Operator configures a confidential client and verifies claims and access behavior with the chosen provider. Local protocol tests use synthetic identities. |
+| External audit receiver and retention | UNVERIFIED | Operator verifies durable acknowledgement, stable-ID deduplication, restricted independent retention, credential rotation, disk/backlog alerts and outage recovery with the real collector. |
+| Internal approval policy | UNVERIFIED | Operator enables requireApproval/requireTicket in private config and verifies two-person publish/restore and approver revocation with real workforce identities. |
 | Deployed account, role, networking, authentication and storage | UNVERIFIED | Operator reviews and deploys the proposed configuration after authorization. Follow deploy/README.md. |
 | Live SES publish and exact restore | UNVERIFIED | Use disposable synthetic content. Compare all three parts and hashes with SES read-back. |
 | SES render parity and actual email-client appearance | UNVERIFIED | An authorized operator runs SES test-render. Inbox/client checks require separate sending authority if needed. |
@@ -83,6 +105,7 @@ Use the credential-free demo with synthetic data. The facilitator opens the libr
 3. Preview Alex's email. Change the sample first name to Jordan and confirm it appears in the greeting and subject. Check the button URL value and plain-text version.
 4. Publish and identify which SES name changed. Explain when recipients will see the new copy and where the prior version is stored.
 5. Restore the prior revision and verify both the headline and button label return.
-6. Attempt to remove the greeting variable. Explain the error and recover without publishing broken content. Open the protected receipt and identify why it cannot be edited.
+6. In the controlled OIDC setup, request review with a reason/reference. Have a different publisher inspect source and rendered comparisons, approve, and execute. Repeat for restore. Confirm an edited draft requires a fresh review and the environment label is understood.
+7. Attempt to remove the greeting variable. Explain the error and recover without publishing broken content. Open the protected receipt and identify why it cannot be edited.
 
 Record completion, confusion, accidental actions, copy misunderstandings and help required for each task. Pass only if the editor completes the main edit/preview/publish/restore workflow without facilitator coaching, understands that preview sends no email, and understands the publish/restore confirmation. Retain notes privately. Fix observed blockers and repeat the affected tasks. Automated Chromium results are not human usability evidence.

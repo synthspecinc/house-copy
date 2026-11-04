@@ -1,0 +1,7 @@
+# Combine with compose.yaml and compose.oidc.yaml for an operator-owned deployment.
+services:
+  house-copy:
+    environment:
+      HOUSE_COPY_AUDIT_URL: "${HOUSE_COPY_AUDIT_URL:?Set the reviewed HTTPS collector URL}"
+      HOUSE_COPY_AUDIT_TOKEN_FILE: /run/house-copy/audit-collector-token
+      HOUSE_COPY_AUDIT_REQUIRED: "true"
