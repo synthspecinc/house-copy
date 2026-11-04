@@ -5,6 +5,7 @@
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | HOUSE_COPY_ADAPTER | fake | `fake` or `aws`. Other values fail startup. |
+| HOUSE_COPY_ENVIRONMENT | demo or aws | Descriptive deployment label recorded with publication evidence. |
 | HOUSE_COPY_CONFIG | ./config/templates.json | Operator-owned mappings and synthetic default samples. |
 | HOUSE_COPY_DB | ./data/house-copy.sqlite | Persistent SQLite database. |
 | HOUSE_COPY_ORIGIN | http://localhost:3210 | Exact origin, without trailing slash, for write request checks. AWS requires HTTPS. |
@@ -48,3 +49,5 @@ This example is for fake mode only. For an authorized AWS deployment, run the sa
 The script reconciles only when the remote template exactly matches either the recorded previous or intended state. A confirmed new state removes the saved draft; a confirmed previous state retains it. It retains every prior revision. It then clears the selected template's operation and stale lock. It refuses unknown remote content. In that case an operator must compare the protected evidence privately and choose the correct revision. Never clear all locks or operations on a running server. A crash without a pending operation can leave a lock; the same offline script clears the selected lock after reading the current template.
 
 Use the same database only with its original adapter, region and account. Restore a backup and rerun local checks if the volume is damaged. Do not delete evidence to unblock publishing.
+
+See [publication history](publication-history.md) for complete before/after records and comparison controls.

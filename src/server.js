@@ -24,7 +24,7 @@ if(mode==='aws') await verifyAccount(region,account);
 phase='template configuration';
 const config=JSON.parse(readFileSync(process.env.HOUSE_COPY_CONFIG || './config/templates.json','utf8'));
 const adapter=mode==='fake'?new FakeSes(store,JSON.parse(readFileSync('./fixtures/templates.json','utf8'))):new AwsSes(region);
-const service=new TemplateService(store,adapter,config);
+const service=new TemplateService(store,adapter,config,{environment:process.env.HOUSE_COPY_ENVIRONMENT});
 phase='HTTP listener';
 const server=createApp(service,{origin,auth,mode}).listen(port,process.env.HOST || '127.0.0.1',()=>console.log(`House Copy is listening on port ${port} in ${mode} mode with ${authMode} authentication.`));
 for(const signal of ['SIGINT','SIGTERM']) process.on(signal,()=>server.close(()=>{store.close();process.exit(0);}));

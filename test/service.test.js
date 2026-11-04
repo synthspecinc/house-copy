@@ -65,8 +65,8 @@ test('subject-only templates preserve absent HTML and text; unmapped templates c
   await assert.rejects(()=>service.save(protectedTemplate.name,body(protectedTemplate,{})),/no approved/);
 });
 test('AWS adapter uses exact Get/Update commands with no create, delete, send or missing-part coercion',async()=>{
-  const calls=[]; const client={send:async command=>{calls.push(command);return {TemplateContent:{Subject:'Hi',Html:'<p>{{x}}</p>'}};}};
-  const adapter=new AwsSes('example-region',client); const original=await adapter.get('existing'); await adapter.update(original);
+  const calls=[]; const client={send:async command=>{calls.push(command);return {$metadata:{requestId:'sdk-request-id'},TemplateContent:{Subject:'Hi',Html:'<p>{{x}}</p>'}};}};
+  const adapter=new AwsSes('example-region',client); const original=await adapter.get('existing'); assert.deepEqual(await adapter.update(original),{requestId:'sdk-request-id'});
   assert.equal(calls[0].constructor.name,'GetEmailTemplateCommand'); assert.deepEqual(calls[0].input,{TemplateName:'existing'});
   assert.equal(calls[1].constructor.name,'UpdateEmailTemplateCommand'); assert.deepEqual(calls[1].input,{TemplateName:'existing',TemplateContent:{Subject:'Hi',Html:'<p>{{x}}</p>'}});
   await assert.rejects(()=>verifyAccount('region','000000000000',{send:async()=>({Account:'111111111111'})}),/does not match/);
@@ -92,5 +92,5 @@ test('a failed durable audit intent prevents any remote template update',async t
   store.audit=()=>{throw new Error('Audit persistence unavailable');};
   await assert.rejects(()=>service.publish(open.name,{version:saved.version,confirmName:open.name,sample:open.sample}),/Audit persistence/);
   assert.equal(updates,0);assert.deepEqual(await adapter.get(open.name),open.template);
-  assert.equal(store.revisions(open.name).length,1);assert.equal(store.pending(open.name).length,1);
+  assert.equal(store.revisions(open.name).length,0);assert.equal(store.pending(open.name).length,0);
 });

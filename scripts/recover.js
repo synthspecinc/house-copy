@@ -19,7 +19,10 @@ try {
     const hash=fingerprint(current);
     if(hash!==fingerprint(pending.next) && hash!==fingerprint(pending.previous)) throw new Error('Current template matches neither recorded state. Retain the evidence and reconcile manually before recovery.');
     if(hash===fingerprint(pending.next)) store.deleteDraft(name);
-    store.finish(pending.id);
+    store.transaction(()=>{
+      if(pending.publicationId) store.publicationResult(pending.publicationId,{outcome:hash===fingerprint(pending.next)?'recovered_success':'recovered_unchanged',confirmedHash:hash,providerRequestId:null});
+      store.finish(pending.id);
+    });
     console.log(hash===fingerprint(pending.next)?'Confirmed the intended update. Prior revision retained.':'Confirmed SES still has the prior version. Saved draft retained.');
   }
   store.db.prepare('DELETE FROM locks WHERE name=?').run(name);
