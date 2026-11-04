@@ -71,6 +71,8 @@ The application uses SES v2 GetEmailTemplate and UpdateEmailTemplate. It does no
 
 [The security design](docs/security-design.md) describes OIDC, per-request user permissions, revocable sessions, CSRF protection and actor-attributed publishing history. The local demo uses a labeled synthetic actor. Real SES connections require individual authentication. House Copy has no local passwords or public registration.
 
+See [publication history](docs/publication-history.md), [independent approval](docs/approvals.md) and the [publishing controls design](docs/publishing-controls-design.md) for complete change evidence and optional two-person publishing.
+
 ## Project status and release
 
 This implementation follows the requirements in the implementation request. The referenced attached brief did not reach the workspace or thread. Its scope and acceptance tests must still be reconciled when it is supplied. No live Staging checks, live Huskar policy inspection or human usability session have run. No release artifact has been published or deployed by this work.

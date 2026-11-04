@@ -1,11 +1,15 @@
 import { Problem, applyFields, mappedFields, fingerprint, render, previewDocument } from './editor.js';
 import { randomUUID } from 'node:crypto';
-import { changeMetadata,comparison,publicationRecord,publicationSummary } from './publications.js';
+import { comparison,publicationRecord,publicationSummary } from './publications.js';
+import { Reviews,identityKey,requirePublisher } from './approvals.js';
+import { demoActor } from './auth.js';
 
 export class TemplateService {
   constructor(store, adapter, config,{environment}={}) {
-    this.store=store; this.adapter=adapter; this.config=config;this.scope=store.scope(environment);
+    this.store=store; this.adapter=adapter; this.config=config;this.scope=store.scope(environment);this.defaultActor=this.scope.mode==='fake'?demoActor:undefined;
+    this.authority={version:()=> 'local-demo',isPublisher:actor=>actor?.role==='publisher'};this.reviews=new Reviews(this);
     if (!Array.isArray(config.templates) || new Set(config.templates.map(t=>t.name)).size !== config.templates.length) throw new Error('Template names must be unique.');
+    for(const t of config.templates) this.reviews.policy(t.name);
     for (const t of config.templates) if (!/^[\w-]{1,64}$/.test(t.name) || !Array.isArray(t.fields)) throw new Error('Invalid template configuration.');
   }
   mapping(name) { const m=this.config.templates.find(t=>t.name===name); if (!m) throw new Problem(404,'This template is not configured.'); return m; }
@@ -22,7 +26,7 @@ export class TemplateService {
       version:draft?.version || null,baseHash:draft?.baseHash || fingerprint(current),currentHash:fingerprint(current),
       mappingHash:fingerprint(mapping),hasDraft:!!draft,stale:!!draft && draft.baseHash!==fingerprint(current),mappingError,
       recoveryRequired:pending,editable:fields.length>0 && !mappingError && !pending,
-      scope:this.scope,publications:this.store.publications(name).map(publicationSummary),revisions:this.store.revisions(name).map(({template,...r})=>r)};
+      publicationPolicy:this.reviews.policy(name),reviews:this.reviews.list(name),scope:this.scope,publications:this.store.publications(name).map(publicationSummary),revisions:this.store.revisions(name).map(({template,...r})=>r)};
   }
   async reviewDraft(name) {
     const mapping=this.mapping(name),current=await this.adapter.get(name),draft=this.store.draft(name);
@@ -34,7 +38,8 @@ export class TemplateService {
     if(!record) throw new Problem(404,'Publication not found.');
     return {...record,parts:comparison(record.before,record.after)};
   }
-  async save(name, body) {
+  async save(name, body,context={}) {
+    const actor=context.actor || this.defaultActor;
     this.mapping(name);
     return this.store.lock(name,async()=>{
       const mapping=this.mapping(name), current=await this.adapter.get(name), existing=this.store.draft(name);
@@ -45,7 +50,9 @@ export class TemplateService {
       if (this.store.pending(name).length) throw new Problem(409,'An earlier update needs operator recovery. Publishing is blocked.');
       if (!mapping.fields.length) throw new Problem(422,'This template has no approved content fields.');
       const template=applyFields(existing?.template || current,mapping,body.fields);
-      const draft={template,baseHash:body.baseHash,version:randomUUID(),mappingHash:body.mappingHash};
+      const contributors=[...(existing?.contributors || [])];
+      if(actor && !contributors.some(a=>identityKey(a)===identityKey(actor))) contributors.push(actor);
+      const draft={template,baseHash:body.baseHash,version:randomUUID(),mappingHash:body.mappingHash,contributors,authorshipKnown:!!actor && (!existing || existing.authorshipKnown===true)};
       this.store.saveDraft(name,draft);
       return this.open(name);
     });
@@ -66,6 +73,7 @@ export class TemplateService {
     return {...result,html:previewDocument(result.html)};
   }
   async publish(name, body,context={}) {
+    context={...context,actor:context.actor || this.defaultActor};requirePublisher(context.actor);
     this.mapping(name);
     return this.store.lock(name,async()=>{
       const draft=this.store.draft(name);
@@ -74,12 +82,15 @@ export class TemplateService {
       if (body.confirmName!==name) throw new Problem(422,'Confirm the template name before publishing.');
       // Validate all parts and sample data before any remote write.
       render(draft.template,body.sample);
-      await this.write(name,draft.template,draft.baseHash,'Before publish',{...context,...changeMetadata(body,this.scope),mappingHash:draft.mappingHash});
+      const check=()=>this.reviews.check(name,'publish',draft.template,draft.baseHash,body,context,{draftVersion:draft.version});
+      const metadata=check();
+      await this.write(name,draft.template,draft.baseHash,'Before publish',{...context,...metadata,mappingHash:draft.mappingHash,approvalCheck:check});
       this.store.deleteDraft(name);
       return this.open(name);
     });
   }
   async restore(name,id,body,context={}) {
+    context={...context,actor:context.actor || this.defaultActor};requirePublisher(context.actor);
     this.mapping(name);
     return this.store.lock(name,async()=>{
       if (this.store.draft(name)) throw new Problem(409,'Discard or publish the saved draft before restoring a revision.');
@@ -87,7 +98,9 @@ export class TemplateService {
       const revision=this.store.revision(name,id);
       if (!revision) throw new Problem(404,'Revision not found.');
       // Restore is exact, including historical HTML, text, expressions and attributes.
-      await this.write(name,revision.template,body.currentHash,'Before restore',{...context,...changeMetadata(body,this.scope),mappingHash:fingerprint(this.mapping(name))});
+      const check=()=>this.reviews.check(name,'restore',revision.template,body.currentHash,body,context,{restoreRevisionId:id});
+      const metadata=check();
+      await this.write(name,revision.template,body.currentHash,'Before restore',{...context,...metadata,mappingHash:fingerprint(this.mapping(name)),approvalCheck:check});
       return this.open(name);
     });
   }
@@ -98,8 +111,10 @@ export class TemplateService {
     const action=reason==='Before publish'?'template.publish':'template.restore';
     let publication,operation,auditContext;
     this.store.transaction(()=>{
+      context.approvalCheck?.();
       const revision=this.store.snapshot(name,previous,reason,context);
       publication=this.store.publicationIntent(name,publicationRecord(name,previous,next,reason,context,this.scope,revision.id));
+      this.reviews.consume(context.reviewId,publication.id);
       auditContext={...context,template:name,revision:revision.id,publicationId:publication.id,beforeHash:publication.beforeHash,afterHash:publication.afterHash};
       operation=this.store.operation(name,{previous,next,created:new Date().toISOString(),actor:context.actor,requestId:context.requestId,revision:revision.id,publicationId:publication.id});
       this.store.audit(action,{...auditContext,outcome:'started'});

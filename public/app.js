@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let state, fields={}, sample={}, dirty=false, previewed=false, view='edit', busy=false, identity,csrfToken;
+let state, fields={}, sample={}, dirty=false, previewed=false, view='edit', busy=false, identity,csrfToken,selectedReview;
 async function api(path,method='GET',body) {
   const response=await fetch(`/api/templates${path}`,{method,headers:{'Content-Type':'application/json','X-House-Copy':'1',...(csrfToken?{'X-CSRF-Token':csrfToken}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
   const data=await response.json();
@@ -27,7 +27,12 @@ function changes() { dirty=true; previewed=false; $('draft-state').textContent='
 function syncButtons() {
   const blocked=busy || !identity || !state?.editable || state.stale;
   $('save').disabled=blocked || !dirty;
-  $('publish').disabled=blocked || identity?.role!=='publisher' || dirty || !state?.hasDraft || !previewed;
+  $('publish').disabled=blocked || identity?.role!=='publisher' || dirty || !state?.hasDraft || !previewed || state?.publicationPolicy.requireApproval && !approvedDraft();
+  $('request-review').disabled=blocked || dirty || !state?.hasDraft;
+  $('request-review').hidden=!state?.publicationPolicy.requireApproval;
+  $('approval-history').hidden=!state?.publicationPolicy.requireApproval && !state?.reviews.length;
+  $('change-reference').placeholder=state?.publicationPolicy.requireTicket?'Required by publication policy':'Optional change reference';
+  syncReviewButtons();
   $('discard').disabled=busy || !state?.hasDraft;
   $('review-draft').disabled=busy || !state?.hasDraft;
   for(const button of $('revisions').querySelectorAll('button[data-restore]')) button.disabled=busy || !identity || identity.role!=='publisher' || state?.recoveryRequired;
@@ -79,9 +84,10 @@ async function load(name) {
   for(const revision of data.revisions) {
     const item=document.createElement('div'); item.className='revision';
     const text=document.createElement('p'); text.textContent=`${revision.reason} · ${new Date(revision.created).toLocaleString()} · ${revision.actor?.subject || 'Unknown actor'}`;
-    const button=document.createElement('button'); button.textContent='Restore this revision';button.dataset.restore='true'; button.className='text-button'; button.disabled=data.recoveryRequired || identity?.role!=='publisher';
+    const button=document.createElement('button'); button.textContent=data.publicationPolicy.requireApproval?'Request restore review':'Restore this revision';button.dataset.restore='true'; button.className='text-button'; button.disabled=data.recoveryRequired || identity?.role!=='publisher';
     button.onclick=()=>work(async()=>{
       if(dirty || state.hasDraft) throw new Error('Discard or publish the current draft before restoring a revision.');
+      if(state.publicationPolicy.requireApproval) {const review=await api(`/${state.name}/revisions/${revision.id}/reviews`,'POST',{currentHash:state.currentHash,...changeContext()});await load(state.name);showReview(review);status('Restore review requested. SES has not changed.');return;}
       if(await confirmAction('Restore this revision?','This replaces the current SES template with the saved HTML, plain text and subject. House Copy saves the current version first.','Restore revision')) {
         await api(`/${state.name}/revisions/${revision.id}/restore`,'POST',{currentHash:state.currentHash,confirmName:state.name,...changeContext()}); await load(state.name); status('Prior revision restored.');
       }
@@ -95,7 +101,7 @@ async function load(name) {
     button.onclick=()=>work(async()=>showComparison(await api(`/${state.name}/publications/${publication.id}`),'Publication evidence'));
     item.append(text,button);$('revisions').append(item);
   }
-  showEdit(); syncButtons();
+  renderReviews();showEdit(); syncButtons();
 }
 function updateFrameField(field,value) {
   for(const selector of field.selectors) {
@@ -162,6 +168,7 @@ $('edit-view').onclick=showEdit;
 $('preview').onclick=()=>work(()=>makePreview('preview'));
 $('text-view').onclick=()=>work(()=>makePreview('text'));
 $('publish').onclick=()=>work(async()=>{
+  if(state.publicationPolicy.requireApproval) {showReview(await api(`/${state.name}/reviews/${approvedDraft().id}`));return;}
   if(await confirmAction('Publish these changes?','Your application will use this copy the next time it sends this template. You can restore the prior revision from history.','Publish changes')) { await api(`/${state.name}/publish`,'POST',{version:state.version,confirmName:state.name,sample,...changeContext()}); await load(state.name); status('Changes published. The prior revision is in history.'); }
 });
 $('back').onclick=()=>work(async()=>{
@@ -201,6 +208,7 @@ function highlighted(before,after,which) {
   mark.className=which;mark.textContent=value.slice(start,value.length-end);fragment.append(document.createTextNode(value.slice(0,start)),mark,document.createTextNode(end?value.slice(-end):''));return fragment;
 }
 function showComparison(data,title='Change review') {
+  selectedReview=undefined;$('review-actions').hidden=true;$('review-status').hidden=true;$('review-previews').hidden=true;$('review-previews').replaceChildren();
   $('comparison-title').textContent=title;
   $('comparison-context').textContent=`${data.scope.environment} · ${data.scope.account || 'Local account'} · ${data.name} · ${data.changeReason || 'Saved draft'}${data.reference?' · '+data.reference:''}`;
   $('comparison-parts').replaceChildren();
@@ -214,3 +222,49 @@ function showComparison(data,title='Change review') {
   $('comparison').showModal();
 }
 $('review-draft').onclick=()=>work(async()=>showComparison(await api(`/${state.name}/review`),'Review saved changes'));
+
+function approvedDraft() {return state?.reviews.find(r=>r.kind==='publish' && r.draftVersion===state.version && r.status==='approved');}
+function renderReviews() {
+  $('reviews').replaceChildren();
+  for(const review of state.reviews || []) {
+    const row=document.createElement('div'),text=document.createElement('p'),button=document.createElement('button');row.className='revision';
+    text.textContent=`${review.kind} · ${review.status} · requested by ${review.requester.subject}`;button.className='text-button';button.textContent='Review this change';
+    button.onclick=()=>work(async()=>showReview(await api(`/${state.name}/reviews/${review.id}`)));row.append(text,button);$('reviews').append(row);
+  }
+}
+function syncReviewButtons() {
+  if(!selectedReview) return;
+  const own=JSON.stringify([identity?.issuer,identity?.subject]);
+  const contributors=[selectedReview.requester,...selectedReview.contributors].map(a=>JSON.stringify([a.issuer,a.subject]));
+  const canDecide=!busy && identity?.role==='publisher' && !contributors.includes(own) && !selectedReview.decision && !selectedReview.publicationId;
+  $('approve-review').disabled=!canDecide || !!selectedReview.previewError;
+  $('reject-review').disabled=!canDecide;
+  $('execute-review').disabled=busy || identity?.role!=='publisher' || selectedReview.decision?.decision!=='approved' || !!selectedReview.publicationId;
+}
+function showReview(review) {
+  showComparison(review,'Independent change review');selectedReview=review;
+  $('review-status').hidden=false;$('review-status').textContent=review.previewError || `Status: ${review.status}. Requested by ${review.requester.subject}.${review.decision?' Decision by '+review.decision.actor.subject+'.':''}`;
+  $('review-actions').hidden=false;$('execute-review').textContent=review.kind==='restore'?'Restore approved revision':'Publish approved change';
+  if(review.previews) {
+    $('review-previews').hidden=false;const columns=document.createElement('div');columns.className='comparison-columns';
+    for(const which of ['before','after']) {
+      const column=document.createElement('div'),heading=document.createElement('h3'),frame=document.createElement('iframe');heading.textContent=which==='before'?'Before sample':'After sample';frame.title=heading.textContent;frame.setAttribute('sandbox','allow-same-origin');frame.referrerPolicy='no-referrer';frame.onload=()=>frame.contentDocument?.addEventListener('click',event=>event.preventDefault());frame.srcdoc=review.previews[which].html;column.append(heading,frame);columns.append(column);
+    }
+    $('review-previews').append(columns);
+  }
+  syncReviewButtons();
+}
+$('request-review').onclick=()=>work(async()=>{
+  const review=await api(`/${state.name}/reviews`,'POST',{version:state.version,...changeContext()});await load(state.name);showReview(review);status('Independent review requested. SES has not changed.');
+});
+$('refresh-reviews').onclick=()=>work(async()=>{
+  const fresh=await api(`/${state.name}`);state.reviews=fresh.reviews;renderReviews();status('Review status refreshed.');
+});
+for(const [id,decision] of [['approve-review','approved'],['reject-review','rejected']]) $(id).onclick=()=>work(async()=>{
+  const review=await api(`/${state.name}/reviews/${selectedReview.id}/decision`,'POST',{decision});$('comparison').close();await load(state.name);showReview(review);status(decision==='approved'?'Change approved. SES has not changed.':'Change rejected. SES has not changed.');
+});
+$('execute-review').onclick=()=>work(async()=>{
+  const review=selectedReview;$('comparison').close();
+  if(!await confirmAction(review.kind==='restore'?'Restore this approved revision?':'Publish this approved change?','This applies the exact reviewed content. The current SES version is saved first.',review.kind==='restore'?'Restore approved revision':'Publish approved change')) {showReview(review);return;}
+  await api(`/${state.name}/reviews/${review.id}/execute`,'POST',{confirmName:state.name,sample});await load(state.name);status(review.kind==='restore'?'Approved revision restored.':'Approved change published.');
+});
